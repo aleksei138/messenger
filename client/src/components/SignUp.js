@@ -98,7 +98,9 @@ export default function SignUp() {
             }, 1000);
             
           }).catch((error) => {
-            setErrorMessage(error.message);
+            // if that's a custom errot
+            let message = error.name === 'Error' ? error.message : 'Something went wrong';
+            setErrorMessage(message);
             setAlert(true);
             console.log(error);
             setTimeout(() => {
