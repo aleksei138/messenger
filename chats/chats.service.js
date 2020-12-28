@@ -12,7 +12,6 @@ module.exports = {
     dropUnreadForChat,
     setUnreadForChat,
     findChat,
-    loadContacts,
     findChatParticipants,
     deleteChat
 };
@@ -32,58 +31,99 @@ async function loadChatHeaders(userId) {
         await client.connect();
         const database = client.db(DATABASE_NAME);
            
-        // fetch all chats for user
+        // fetch all chats for user (subquery)
         const queryForUser = { userId: userId };
         const userChats = database.collection("userChats");
         const cursorForUser = await userChats.find(queryForUser, { projection: { chatId: 1 } });
         var resultForUser = [];
         await cursorForUser.forEach(chat => resultForUser.push(chat.chatId));
 
-        
-        // load chats
-        const chats = database.collection("chats");
-        const query = { "id" : {$in : resultForUser }};
-        const cursor= await chats.find(query).sort({'lastMessage.time': -1});
+
+        const aggregated = await userChats.aggregate([
+            {
+                $lookup: {
+                    from: "chats",
+                    localField: "chatId",
+                    foreignField: "id",
+                    as: "chats"
+                }
+            },
+            {
+                $unwind: "$chats"
+            },
+            {
+                $lookup: {
+                    from: "users",
+                    localField: "userId",
+                    foreignField: "id",
+                    as: "users"
+                }
+            },
+            {
+                $unwind: "$users"
+            },
+            {
+                $lookup: {
+                    from: "messages",
+                    localField: "chats.lastMessageId",
+                    foreignField: "id",
+                    as: "messages"
+                }
+            },
+            {
+                $unwind: "$messages"
+            },
+            {
+                $match: {
+                    $and: [{"chats.id" : {$in: resultForUser}}]
+                }
+            },
+            {
+                $project: {
+                    id: "$chats.id",
+                    title: "$chats.title",
+                    type: "$chats.type",
+                    unread: 1,
+                    firstName: "$users.firstName",
+                    lastName: "$users.lastName",
+                    text: "$messages.text",
+                    time: "$messages.time",
+                    userId: "$users.id",
+                    from: "$messages.sender"
+                }
+            }
+            
+        ]);
+
+        var aggregatedResults = [];
+        await aggregated.forEach(a => aggregatedResults.push(a));
+
+        var grouped = Object.entries(groupBy(aggregatedResults, 'id'));
         var result = [];
-        await cursor.forEach(chat => result.push(chat));
-
-
-        // fetch counters of unread messages
-        const queryForChats = {"chatId": { $in: resultForUser }}
-        const cursorForChats = await userChats.find(queryForChats);
-        var resultForChats = [];
-        await cursorForChats.forEach(chat => resultForChats.push(chat));
-
-        // fetch user names for display
-        const queryForNames = {"id" : { $in: resultForChats.map(x => x.userId)}};
-        const optionsForNames = { projection: { id: 1, firstName: 1, lastName: 1} };
-        const users = database.collection("users");
-        const userCursor = await users.find(queryForNames, optionsForNames);
-        var userResults = [];
-        await userCursor.forEach(u => userResults.push({id: u.id, name: u.firstName + ' ' + u.lastName}));
-
-        const grouped = Object.entries(groupBy(resultForChats, 'chatId'));
-        const chatsParticipants = [];
-        for (const [key, value] of grouped) {
+        for (const [chatId, value] of grouped) {
             let chat = {};
-            chat.chatId = key;
-            chat.participants = value.map(x => ({ id: x.userId, name: userResults.find(u => u.id === x.userId).name}));
-            chatsParticipants.push(chat);
-        }
-        
-        var finalResult = [];
+            chat.id = chatId;
+            chat.type = value[0].type;
+            chat.title = value[0].title;
+            chat.lastMessage = {
+                from: value[0].from,
+                text: value[0].text,
+                time: value[0].time,
+            };
+            if (chat.type === 'private')
+                chat.hasBeenRead = value.find(x => x.userId !== userId).unread === 0;
+            else
+                chat.hasBeenRead = true;
 
-        result.forEach(x => {
-            let res = x;
-            res.unread = resultForChats.find(chat => chat.chatId === x.id && chat.userId === userId).unread;
-            if (x.type === 'private') {
-                res.hasBeenRead = resultForChats.find(chat => chat.chatId === x.id && chat.userId !== userId).unread === 0;
-            }     
-            res.participants = chatsParticipants.find(p => p.chatId === x.id).participants;
-            finalResult.push(res);    
+            chat.unread = value.find(x => x.userId === userId).unread;
+            chat.participants = value.map(x => ({ id: x.userId, name: x.firstName + ' ' + x.lastName}));
+            result.push(chat);
+        }
+        result.sort((a, b) => {
+            return new Date(b.lastMessage.time) - new Date(a.lastMessage.time);
         });
 
-        return finalResult;
+        return result;
     }
     catch (e) {
         console.error(e);
@@ -94,7 +134,7 @@ async function loadChatHeaders(userId) {
 
 async function findChat(chatId) {
     const uri = config.connectionString;
-    const client = new MongoClient(uri);
+    const client = new MongoClient(uri, { useUnifiedTopology: true } );
     try {
         await client.connect();
         const database = client.db(DATABASE_NAME);
@@ -112,7 +152,7 @@ async function findChat(chatId) {
 
 async function findChatParticipants(chatId) {
     const uri = config.connectionString;
-    const client = new MongoClient(uri);
+    const client = new MongoClient(uri, { useUnifiedTopology: true } );
     try {
         await client.connect();
         const database = client.db(DATABASE_NAME);
@@ -140,7 +180,7 @@ async function loadMessages(userId, chatId) {
     else
         return [];
     const uri = config.connectionString;
-    const client = new MongoClient(uri);
+    const client = new MongoClient(uri, { useUnifiedTopology: true } );
     try {
         await client.connect();
         const database = client.db(DATABASE_NAME);
@@ -160,7 +200,7 @@ async function loadMessages(userId, chatId) {
 
 async function updateChat(chatId, message) {
     const uri = config.connectionString;
-    const client = new MongoClient(uri);
+    const client = new MongoClient(uri, { useUnifiedTopology: true } );
     try {
         await client.connect();
         const database = client.db(DATABASE_NAME);
@@ -169,9 +209,7 @@ async function updateChat(chatId, message) {
             {id: chatId},
             {
                 $set: {
-                    'lastMessage.from': message.sender,
-                    'lastMessage.text': message.text,
-                    'lastMessage.time': message.time
+                    lastMessageId: message.id
                 }
             }
         );
@@ -185,7 +223,7 @@ async function updateChat(chatId, message) {
 
 async function setIsRead(messageId) { // not in service yet
     const uri = config.connectionString;
-    const client = new MongoClient(uri);
+    const client = new MongoClient(uri, { useUnifiedTopology: true } );
     try {
         await client.connect();
         const database = client.db(DATABASE_NAME);
@@ -208,7 +246,7 @@ async function setIsRead(messageId) { // not in service yet
 
 async function dropUnreadForChat(userId, chatId) {
     const uri = config.connectionString;
-    const client = new MongoClient(uri);
+    const client = new MongoClient(uri, { useUnifiedTopology: true } );
     try {
         await client.connect();
         const database = client.db(DATABASE_NAME);
@@ -229,7 +267,7 @@ async function dropUnreadForChat(userId, chatId) {
 
 async function setUnreadForChat(userId, chatId) {
     const uri = config.connectionString;
-    const client = new MongoClient(uri);
+    const client = new MongoClient(uri, { useUnifiedTopology: true } );
     try {
         await client.connect();
         const database = client.db(DATABASE_NAME);
@@ -248,21 +286,12 @@ async function setUnreadForChat(userId, chatId) {
     }
 }
 
-async function createNewPrivateChat(userId, chatId, participants, lastMessage) {
+async function createNewPrivateChat(userId, chatId, participants, messageId) {
     const uri = config.connectionString;
-    const client = new MongoClient(uri);
+    const client = new MongoClient(uri, { useUnifiedTopology: true } );
     try {
         await client.connect();
         const database = client.db(DATABASE_NAME);
-        const chats = database.collection("chats");
-        await chats.insertOne({
-            id: chatId,
-            type: 'private', 
-            title: '',
-            lastMessage,
-            createdBy: userId,
-            createdDate: new Date()
-        });
 
         const userChats = database.collection("userChats");        
         participants.forEach( async (p) => {
@@ -272,6 +301,18 @@ async function createNewPrivateChat(userId, chatId, participants, lastMessage) {
                 unread: 0
             });
         });
+
+        const chats = database.collection("chats");
+        await chats.insertOne({
+            id: chatId,
+            type: 'private', 
+            title: '',
+            lastMessageId: messageId,
+            createdBy: userId,
+            createdDate: new Date()
+        });
+
+        
     }
     catch (e) {
         console.error(e);
@@ -283,22 +324,11 @@ async function createNewPrivateChat(userId, chatId, participants, lastMessage) {
 
 async function saveMessage(message) {
     const uri = config.connectionString;
-    const client = new MongoClient(uri);
+    const client = new MongoClient(uri, { useUnifiedTopology: true } );
     try {
         await client.connect();
         const database = client.db(DATABASE_NAME);
         const collection = database.collection("messages");
-        if (message.isNewChat && message.to.length === 2){
-            await createNewPrivateChat(
-                message.sender, 
-                message.chatId, 
-                message.to, 
-                {
-                    from: message.sender,
-                    text: message.text,
-                    time: message.time
-                });
-        }
         // save message
         await collection.insertOne({
             id: message.id,
@@ -308,38 +338,19 @@ async function saveMessage(message) {
             text: message.text,
             time: message.time
         });
+        
+        if (message.isNewChat && message.to.length === 2){
+            await createNewPrivateChat(
+                message.sender, 
+                message.chatId,
+                message.to,
+                message.id
+                );
+        }
+        
         // update chat header
         await updateChat(message.chatId, message);
-    }
-    catch (e) {
-        console.error(e);
-    } finally {
-        await client.close();
-    }
-}
-
-
-async function loadContacts(userId) {
-    const uri = config.connectionString;
-    const client = new MongoClient(uri);
-    try {
-        await client.connect();
-        const database = client.db(DATABASE_NAME);
-        const collection = database.collection("users");
-        const query = { id: {$ne: userId} };
-        const options = {
-            projection: {
-                id: 1,
-                firstName: 1,
-                lastName: 1,
-                lastSeen: 1,
-                online: 1
-            }
-        }
-        const cursor = await collection.find(query, options);
-        var result = [];
-        await cursor.forEach(contact => result.push(contact));
-        return result;
+        
     }
     catch (e) {
         console.error(e);
@@ -351,7 +362,7 @@ async function loadContacts(userId) {
 
 async function deleteChat(chatId) {
     const uri = config.connectionString;
-    const client = new MongoClient(uri);
+    const client = new MongoClient(uri, { useUnifiedTopology: true } );
     try {
         await client.connect();
         const database = client.db(DATABASE_NAME);

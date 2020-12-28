@@ -156,8 +156,8 @@ io.on('connection', (socket) => {
             io.to(message.to).emit(NEW_CHAT_MESSAGE_EVENT, message); 
 
             // mark it unread
-            chatService.setUnreadForChat(message.to, message.chatId);
-
+            if (msg.type === 'full')
+              chatService.setUnreadForChat(message.to, message.chatId);
           });
         } 
 

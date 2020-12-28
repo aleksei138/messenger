@@ -4,7 +4,7 @@ const chatService = require('./chats.service');
 
 router.get('/api/chats/loadchatlist', loadChatList);
 router.get('/api/chats/loadchat', loadChat);
-router.get('/api/chats/loadContacts', loadContacts);
+
 
 module.exports = router;
 
@@ -19,8 +19,5 @@ async function loadChat(req, res, next){
   res.json(messages);   
 }
 
-async function loadContacts(req, res, next) {
-  const contacts = await chatService.loadContacts(req.user.sub);
-  res.json(contacts);
-}
+
 

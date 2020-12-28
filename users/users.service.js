@@ -8,6 +8,7 @@ module.exports = {
     createUser,
     setLastSeen,
     getLastSeen,
+    loadContacts,
     findUser
 };
 
@@ -20,7 +21,7 @@ function newGuid() {
 
 async function findUser(username) {
     const uri = config.connectionString;
-    const client = new MongoClient(uri);
+    const client = new MongoClient(uri, { useUnifiedTopology: true } );
     try {
         await client.connect();
         const database = client.db(DATABASE_NAME);
@@ -41,7 +42,7 @@ async function findUser(username) {
 
 async function setLastSeen(userId, online) {
     const uri = config.connectionString;
-    const client = new MongoClient(uri);
+    const client = new MongoClient(uri, { useUnifiedTopology: true } );
     try {
         await client.connect();
         const database = client.db(DATABASE_NAME);
@@ -64,7 +65,7 @@ async function setLastSeen(userId, online) {
 
 async function getLastSeen(userId) {
     const uri = config.connectionString;
-    const client = new MongoClient(uri);
+    const client = new MongoClient(uri, { useUnifiedTopology: true } );
     try {
         await client.connect();
         const database = client.db(DATABASE_NAME);
@@ -87,7 +88,7 @@ function capitalizeFirstLetter(string) {
 
 async function createUser(user) {
     const uri = config.connectionString;
-    const client = new MongoClient(uri);
+    const client = new MongoClient(uri, { useUnifiedTopology: true } );
     try {
         await client.connect();
         const database = client.db(DATABASE_NAME);
@@ -105,6 +106,35 @@ async function createUser(user) {
             return id;
         else
             return null;
+    }
+    catch (e) {
+        console.error(e);
+    } finally {
+        await client.close();
+    }
+}
+
+async function loadContacts(userId) {
+    const uri = config.connectionString;
+    const client = new MongoClient(uri, { useUnifiedTopology: true } );
+    try {
+        await client.connect();
+        const database = client.db(DATABASE_NAME);
+        const collection = database.collection("users");
+        const query = { id: {$ne: userId} };
+        const options = {
+            projection: {
+                id: 1,
+                firstName: 1,
+                lastName: 1,
+                lastSeen: 1,
+                online: 1
+            }
+        }
+        const cursor = collection.find(query, options).sort({"firstName": 1, "lastName": 1});
+        var result = [];
+        await cursor.forEach(contact => result.push(contact));
+        return result;
     }
     catch (e) {
         console.error(e);

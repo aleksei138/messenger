@@ -47,10 +47,10 @@ export function ChatListElement(props) {
         avatarLetters = splited.length > 1 ? splited[0][0] + splited[1][0] : title[0];
     }
     
-    var lastMessageFrom = 'Me: ';
+    var lastMessageFrom = 'You: ';
 
     if (props.lastMessage.from && props.lastMessage.from !== currentUserId)
-        lastMessageFrom = props.participants.find(p => p.id === props.lastMessage.from).name + ': '        
+        lastMessageFrom = '';       
 
     function formatDate(date) {
         const dt = moment(date);

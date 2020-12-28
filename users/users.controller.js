@@ -8,8 +8,9 @@ const config = require('config.json');
 router.post('/api/authenticate', authenticate);
 router.post('/api/createuser', createUser);
 
-router.get('/api/verify', verify)
-router.get('/api/getLastSeen', getLastSeen)
+router.get('/api/verify', verify);
+router.get('/api/getLastSeen', getLastSeen);
+router.get('/api/chats/loadContacts', loadContacts);
 
 
 module.exports = router;
@@ -89,6 +90,11 @@ async function getLastSeen(req, res, next) {
     const lastSeen = await userService.getLastSeen(req.query.userId);
     res.json(lastSeen);
 }
+
+async function loadContacts(req, res, next) {
+    const contacts = await userService.loadContacts(req.user.sub);
+    res.json(contacts);
+  }
 
 
 
