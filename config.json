@@ -1,0 +1,4 @@
+{
+    "secret": "Your own JWT secter string",
+    "connectionString": "Connection string to MongoDB server"
+}

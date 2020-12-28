@@ -1,0 +1,250 @@
+
+/* ========================  messages ========================  */
+
+.message-wrapper {
+    width: 100%;
+    padding: 15px;
+    background-color: transparent;
+    display: flex;
+}
+
+.message-body {
+    background-color: #ffffff;
+    border-radius: 8px;
+    padding: 8px;
+    width: fit-content;
+    height: fit-content;
+    position: relative;
+    max-width: 50%;
+}
+
+.my-message {
+    border-top-right-radius: 0;
+    margin-left: auto;
+    margin-right: 0;
+    background-color: #dee9ff;
+}
+
+.others-message {
+    border-top-left-radius: 0;
+}
+
+.others-message-triangle {
+    width: 0;
+    height: 0;
+    border-top: 8px solid white;
+    border-left: 8px solid transparent;
+}
+
+.my-message-triangle {
+    width: 0;
+    height: 0;
+    border-top: 8px solid #dee9ff;
+    border-right: 8px solid transparent;
+    
+}
+.message-text {
+    height: fit-content;
+    font-size: 14px;
+    padding: 0.2em;
+}
+
+.message-time {
+    font-size: 11px;
+    float: right;
+}
+
+.message-from{
+    font-weight: 600;
+    height: fit-content;
+    font-size: 14px;
+    padding: 0.2em;
+}
+
+#chat-info {
+    display: flex;
+    height: 100%;
+    float: left;
+    margin-right: auto;
+    margin-left: 1em;
+}
+
+#chat-info-title {
+    font-size: 18px;
+    font-weight: 500;
+}
+
+#chat-info-lastSeen {
+    font-size: 13px;
+}
+
+#chat-options {
+    margin-left: auto;
+    height: 100%;
+}
+
+#chat-container {
+    width: 100%;
+}
+
+.chat-list-element {
+    padding: 10px 10px 0px 10px;
+    background-color: white;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    cursor: pointer;
+    user-select: none;
+}
+    .chat-list-element:hover {
+        background-color: #d7e6fc;
+    }
+.chat-list-title {
+    font-size: 18px;
+    font-weight: 500;
+}
+
+.chat-list-message {
+    font-size: 13px;
+    width: 200px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.chat-list-time {
+    font-size: 13px;
+    margin-left: auto;
+}
+
+.chat-list-header {
+    display: flex;
+    width: 100%;
+    position: relative;
+    padding-bottom: 0.2em;
+}
+
+.chat-list-unread-wrapper {
+    border-radius: 50%;
+    background-color: #0ee607;
+    width: 1.5em;
+    height: 1.5em;
+    margin-left: 1em;
+    text-align: center;
+}
+
+.chat-list-content {
+    margin-left: 0.5em;
+    margin-right: 0.5em;
+    padding-bottom: 1em;
+    border-bottom: #808080;
+    display: flex;
+    border-style: solid;
+    border-width: 0px 0px 1px 0px;
+    padding-top: 0.3em;
+}
+
+.chat-list-icon {
+    display: flex;
+    padding: 0.5em;
+}
+
+.chat-list-description {
+    display: flex;
+    flex-direction: column;
+    flex-grow: 1;
+    padding-left: 0.5em;
+}
+
+.chat-list-hasNotBeenRead {
+    border-radius: 50%;
+    background-color: #2895fc;
+    width: 1em;
+    height: 1em;
+    margin-left: 0.5em;
+    margin-top: 0.5em;
+}
+
+
+#user-info {
+    background-color: white;
+    border-color: #a7a7a7;
+    border-style: solid;
+    border-width: 0px 0px 1px 0px;
+    background-color: white;
+    position: relative;
+}
+
+#user-name {
+    font-weight: 600;
+    font-size: 20px;
+    padding-left: 0.5em;
+}
+
+#left {
+    border-color: #a7a7a7;
+    border-style: solid;
+    border-width: 0px 1px 0px 0px;
+    background-color: white;
+}
+
+#top-icons {
+    display: flex;
+    height: 100%;
+    float: right;
+    margin-right: 0.5em;
+}
+
+#sending-form {
+    display: flex;
+    padding-top: 0.5em;
+    position: relative;
+}
+
+
+#init-message {
+    margin: auto;
+    font-size: 20px;
+    user-select: none;
+}
+
+.contact-content {
+    border-bottom: #808080;
+    display: flex;
+    border-style: solid;
+    border-width: 0px 0px 1px 0px;
+    padding-top: 0.6em;
+    padding-bottom: 0.6em;
+    margin-right: 0.6em;
+    margin-left: 0.6em;
+}
+
+.contact-wrapper {
+    cursor: pointer;
+    user-select: none;
+    
+}
+    .contact-wrapper:hover {
+        background-color: #d7e6fc;
+    }
+
+/* decent scrolling bar*/
+
+/* width */
+::-webkit-scrollbar {
+    width: 4px;
+    border-radius: 2px;
+}
+
+/* Track */
+::-webkit-scrollbar-track {
+    background: inherit;
+}
+
+/* Handle */
+::-webkit-scrollbar-thumb {
+    background: #888;
+}
+
+    /* Handle on hover */
+    ::-webkit-scrollbar-thumb:hover {
+        background: #555;
+    }
