@@ -51,26 +51,26 @@ async function createUser(req, res, next) {
         !info.firstName.trim() ||
         !info.lastName.trim()
         ) {
-            res.status(400).send('Empty fields');
+            res.status(400).send({ message: 'Empty fields'});
             return;
         }
     const existing = await userService.findUser(info.username);
     if (existing) {
-        res.status(400).send('User already exists');
+        res.status(400).send({ message: 'User already exists'});
         return;
     }
     // check first and last names contain only letters
     if (/[^a-zA-Z]/.test(info.firstName) || /[^a-zA-Z]/.test(info.lastName)) {
-        res.status(400).send('First and last names shall contain letters only');
+        res.status(400).send({ message: 'First and last names shall contain letters only'});
         return;
     }
     if (info.password.trim().length < 3) {
-        res.status(400).send('Password is too short');
+        res.status(400).send({ message: 'Password is too short'});
         return;
     }
 
     if (info.password.trim() !== info.password) {
-        res.status(400).send('Password shall not begin or end with space');
+        res.status(400).send({ message: 'Password shall not begin or end with space'});
         return;
     }        
 
@@ -81,7 +81,7 @@ async function createUser(req, res, next) {
         .catch(next);
     }
     else {
-        res.status(400).send('something went wrong');
+        res.status(400).send({ message: 'Something went wrong'});
     }
 }
 

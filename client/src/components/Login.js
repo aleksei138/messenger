@@ -53,6 +53,7 @@ export default function Login() {
 
   const [alert, setAlert] = React.useState(false);
   const [success, setSuccess] = React.useState(false);
+  const [errorMessage, setErrorMessage] = useState();
 
   const username = useRef('');
   const password = useRef('');
@@ -73,26 +74,28 @@ export default function Login() {
           },
         body:  JSON.stringify(params)
     }).then((response) => {
-            if (!response.ok)
-                throw new Error();
-            return response.json();
-        })
-        .then((data) => {
-            setSuccess(true);
-            setTimeout(() => {
-              document.cookie = "authentication=" + data.token;
-              localStorage.setItem('authentication', data.token);
-              localStorage.setItem('userId', data.userId);
-              localStorage.setItem('userName', data.userName);
-              window.location.href = '/';
-            }, 1000);
-        })
-        .catch((error) => {
+      response.json().then((data) => {
+        if (!response.ok) {            
+          throw new Error(data.message);
+        }
+        setSuccess(true);
+        setTimeout(() => {
+            document.cookie = "authentication=" + data.token;
+            localStorage.setItem('authentication', data.token);
+            localStorage.setItem('userId', data.userId);
+            localStorage.setItem('userName', data.userName);
+            window.location.href = '/';
+        }, 1000);
+        
+        }).catch((error) => {
+            setErrorMessage(error.message);
             setAlert(true);
+            console.log(error);
             setTimeout(() => {
               setAlert(false);
-            }, 3000);
+            }, 8000);
           });
+        });
     }
 
   return (
@@ -148,7 +151,7 @@ export default function Login() {
           { alert &&
               <Alert severity="error">
                 <AlertTitle>Error</AlertTitle>
-                Username or passwor is incorrect. Please try again
+                {errorMessage}
               </Alert>
           }
           { success &&

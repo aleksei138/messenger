@@ -53,6 +53,7 @@ export default function SignUp() {
   const [alert, setAlert] = useState(false);
   const [alertPassword, setAlertPassword] = useState(false);
   const [success, setSuccess] = useState(false);
+  const [errorMessage, setErrorMessage] = useState();
 
   document.title = 'Sign Up';
 
@@ -63,31 +64,6 @@ export default function SignUp() {
       password: '',
       repeatedPassword: ''
   });
-
-  function login() {
-    fetch('api/authenticate', {
-        method: 'POST',
-        headers: {
-            'Accept': 'application/json',
-            'Content-Type': 'application/json'
-          },
-        body:  JSON.stringify({username: formInfo.current.username, password: formInfo.current.password})
-    }).then((response) => {
-            if (!response.ok)
-                throw new Error();
-            return response.json();
-        })
-        .then((data) => {
-            document.cookie = "authentication=" + data.token;
-            localStorage.setItem('authentication', data.token);
-            localStorage.setItem('userId', data.userId);
-            localStorage.setItem('userName', data.userName);
-            window.location.href = '/';
-        })
-        .catch((error) => {
-            alert('looser');
-          });
-  }
 
   function submit(event) {
     event.preventDefault();
@@ -108,11 +84,10 @@ export default function SignUp() {
           },
         body:  JSON.stringify(formInfo.current)
     }).then((response) => {
-            if (!response.ok)
-                throw new Error();
-            return response.json();
-        })
-        .then((data) => {
+          response.json().then((data) => {
+            if (!response.ok) {            
+              throw new Error(data.message);
+            }
             setSuccess(true);
             setTimeout(() => {
                 document.cookie = "authentication=" + data.token;
@@ -121,13 +96,17 @@ export default function SignUp() {
                 localStorage.setItem('userName', data.userName);
                 window.location.href = '/';
             }, 1000);
-        })
-        .catch((error) => {
+            
+          }).catch((error) => {
+            setErrorMessage(error.message);
             setAlert(true);
+            console.log(error);
             setTimeout(() => {
               setAlert(false);
-            }, 3000);
+            }, 8000);
           });
+          
+        });
     }
 
   return (
@@ -138,7 +117,7 @@ export default function SignUp() {
           <LockOutlinedIcon />
         </Avatar>
         <Typography component="h1" variant="h5">
-          Sign up
+          Sign Up
         </Typography>
         <form className={classes.form} onSubmit={submit} noValidate>
           <Grid container spacing={2}>
@@ -233,7 +212,7 @@ export default function SignUp() {
           { alert &&
               <Alert severity="error">
                 <AlertTitle>Error</AlertTitle>
-                Something went wrong. Please try again
+                {errorMessage}
               </Alert>
           }
           { alertPassword &&
