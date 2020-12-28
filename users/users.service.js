@@ -7,7 +7,8 @@ module.exports = {
     authenticate,
     createUser,
     setLastSeen,
-    getLastSeen
+    getLastSeen,
+    findUser
 };
 
 function newGuid() {
@@ -26,7 +27,10 @@ async function findUser(username) {
         const collection = database.collection("users");
         const query = { username: username };
         const result = await collection.findOne(query);
-        return result;
+        if (result && result.id)
+            return result;
+        else
+            return null;
     }
     catch (e) {
         console.error(e);
@@ -77,6 +81,10 @@ async function getLastSeen(userId) {
     }
 }
 
+function capitalizeFirstLetter(string) {
+    return string.charAt(0).toUpperCase() + string.slice(1);
+  }
+
 async function createUser(user) {
     const uri = config.connectionString;
     const client = new MongoClient(uri);
@@ -87,10 +95,10 @@ async function createUser(user) {
         const id = newGuid();
         const result = await collection.insertOne({
             id: id,
-            username: user.username,
+            username: user.username.trim(),
             password: user.password,
-            firstName: user.firstName,
-            lastName: user.lastName,
+            firstName: capitalizeFirstLetter(user.firstName.trim()),
+            lastName: capitalizeFirstLetter(user.lastName.trim()),
             lastSeen: new Date()
         });
         if (result.insertedCount > 0)

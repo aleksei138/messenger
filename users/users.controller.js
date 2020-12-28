@@ -44,9 +44,39 @@ function verify(req, res){
 }
 
 async function createUser(req, res, next) {
-    const id = await userService.createUser(req.body);
+    const info = req.body;
+    if (!info ||
+        !info.username.trim() ||
+        !info.password.trim() ||
+        !info.firstName.trim() ||
+        !info.lastName.trim()
+        ) {
+            res.status(400).send('Empty fields');
+            return;
+        }
+    const existing = await userService.findUser(info.username);
+    if (existing) {
+        res.status(400).send('User already exists');
+        return;
+    }
+    // check first and last names contain only letters
+    if (/[^a-zA-Z]/.test(info.firstName) || /[^a-zA-Z]/.test(info.lastName)) {
+        res.status(400).send('First and last names shall contain letters only');
+        return;
+    }
+    if (info.password.trim().length < 3) {
+        res.status(400).send('Password is too short');
+        return;
+    }
+
+    if (info.password.trim() !== info.password) {
+        res.status(400).send('Password shall not begin or end with space');
+        return;
+    }        
+
+    const id = await userService.createUser(info);
     if (id) {
-        userService.authenticate({username: req.body.username, password: req.body.password})
+        userService.authenticate({username: info.username, password: info.password})
         .then(user => res.json(user))
         .catch(next);
     }
