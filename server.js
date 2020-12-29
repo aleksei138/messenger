@@ -127,12 +127,10 @@ io.on('connection', (socket) => {
     // =================================================================
     socket.on(NEW_CHAT_MESSAGE_EVENT, async (msg) => {
 
-        // save message to db
+        // save message to db (only for new chats)
         if (msg.type === 'full' && msg.isNewChat)
           await chatService.saveMessage(msg);
-
-        const sender = msg.to.find(x=> x.id === socket.decoded.sub);
-        const senderName = sender ? sender.name : 'Unknown';
+        
         
         if (!msg.to) {
           msg.to = 'TODO: find users whom to send'
@@ -141,27 +139,43 @@ io.on('connection', (socket) => {
           msg.to.forEach(to => {
             if (to.id == socket.decoded.sub)
               return;
-            let message = {
-              id: msg.id,
-              type: msg.type,
-              sender: socket.decoded.sub,
-              senderName: senderName,
-              to: to.id,
-              chatId: msg.chatId,
-              text: msg.text,
-              time: msg.time
+            
+            let message = null;
+
+            if (msg.isNewChat && msg.senderName) { // only for new private chats (add senderName)
+              message = {
+                id: msg.id,
+                type: msg.type,
+                sender: socket.decoded.sub,
+                senderName: msg.senderName,
+                to: to.id,
+                chatId: msg.chatId,
+                text: msg.text,
+                time: msg.time
+              }
+            }
+            else {
+              message = {
+                id: msg.id,
+                type: msg.type,
+                sender: socket.decoded.sub,
+                to: to.id,
+                chatId: msg.chatId,
+                text: msg.text,
+                time: msg.time
+              }
             }
 
             // sending message to room (to user)
             io.to(message.to).emit(NEW_CHAT_MESSAGE_EVENT, message); 
 
             // mark it unread
-            if (msg.type === 'full')
+            if (message.type === 'full')
               chatService.setUnreadForChat(message.to, message.chatId);
           });
         } 
 
-        // save message to db if haven't
+        // save message to db
         if (msg.type === 'full' && !msg.isNewChat)
           await chatService.saveMessage(msg);
 

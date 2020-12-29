@@ -90,7 +90,6 @@
 .chat-list-element {
     padding: 10px 10px 0px 10px;
     background-color: white;
-    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
     cursor: pointer;
     user-select: none;
 }
@@ -100,15 +99,20 @@
 .chat-list-title {
     font-size: 18px;
     font-weight: 500;
-}
-
-.chat-list-message {
-    font-size: 13px;
-    max-width: 200px;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
 }
+
+.chat-list-message {
+    font-size: 13px;
+    max-width: 180px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+
 
 .chat-list-time {
     font-size: 13px;

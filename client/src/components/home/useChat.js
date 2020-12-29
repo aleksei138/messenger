@@ -284,7 +284,8 @@ const useChat = (chatId) => {
   // Sends a message to the server
   const sendMessage = (message) => {
     let msg = message;
-    msg['isNewChat'] = currentMessages.current.length === 0;
+    msg.isNewChat = currentMessages.current.length === 0;
+    msg.senderName = userName;
 
     if (message.type === 'full') {
         // add to own messages and rerender
@@ -312,7 +313,7 @@ const useChat = (chatId) => {
     });
 
     if (found) {
-        found['title'] = contact.fullName;
+        found.title = contact.fullName;
         return found;
     }
 

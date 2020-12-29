@@ -98,9 +98,10 @@ async function createUser(user) {
             id: id,
             username: user.username.trim(),
             password: user.password,
-            firstName: capitalizeFirstLetter(user.firstName.trim()),
-            lastName: capitalizeFirstLetter(user.lastName.trim()),
-            lastSeen: new Date()
+            firstName: capitalizeFirstLetter(user.firstName),
+            lastName: capitalizeFirstLetter(user.lastName),
+            lastSeen: new Date(),
+            online: false
         });
         if (result.insertedCount > 0)
             return id;
@@ -131,9 +132,7 @@ async function loadContacts(userId) {
                 online: 1
             }
         }
-        const cursor = collection.find(query, options).sort({"firstName": 1, "lastName": 1});
-        var result = [];
-        await cursor.forEach(contact => result.push(contact));
+        const result = await collection.find(query, options).sort({"firstName": 1, "lastName": 1}).toArray();
         return result;
     }
     catch (e) {

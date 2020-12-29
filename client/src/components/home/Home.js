@@ -46,11 +46,7 @@ export function ChatListElement(props) {
         const splited = title.split(' ');
         avatarLetters = splited.length > 1 ? splited[0][0] + splited[1][0] : title[0];
     }
-    
-    var lastMessageFrom = 'You: ';
-
-    if (props.lastMessage.from && props.lastMessage.from !== currentUserId)
-        lastMessageFrom = '';       
+       
 
     function formatDate(date) {
         const dt = moment(date);
@@ -88,7 +84,13 @@ export function ChatListElement(props) {
                         }
                     </div>
                     {props.lastMessage.from && 
-                        <div style={{display: 'flex'}}><span className="chat-list-message">{lastMessageFrom + props.lastMessage.text}</span></div>
+                        
+                        <div style={{display: 'flex'}}>
+                            { props.lastMessage.from === currentUserId &&
+                                <span className="chat-list-from" style={{color: '#56b4fc', fontSize: '13px', marginRight: '0.3em'}}>You:</span>
+                            }
+                            <span className="chat-list-message">{props.lastMessage.text}</span>
+                        </div>
                     }
                 </div>
             </div>          
@@ -358,7 +360,7 @@ export default function Home() {
         scrollToBottom();
     }, [messages]);
 
-    // when chat is selected set 
+    // when chat is selected
     useEffect(() => {
         if (currChat.participants && currChat.type === 'private') {
             const user = currChat.participants.find(x => x.id !== currentUserId);
@@ -487,9 +489,9 @@ export default function Home() {
     return (
       <React.Fragment>
         <CssBaseline />
-        <Container maxWidth="lg" style={{paddingLeft: '0px', paddingRight: '0px', boxShadow: 'rgb(136, 136, 136) 0px 0px 20px 5px'}}>
+        <Container maxWidth="lg" style={{paddingLeft: '0px', paddingRight: '0px', boxShadow: 'rgb(136, 136, 136) 0px 0px 20px 5px', minWidth: '620px'}}>
             <Grid container direction="row">
-                <Grid id="left" container item xs={4} style={{ height: '100vh' }}>
+                <Grid id="left" container item xs={4} wrap="nowrap" style={{ height: '100vh', minWidth: '300px' }}>
                     <Grid container direction="column">
                         <Grid id="user-info" style={{  height: '7vh' }}>
                             <div style={{ height: '100%', float: 'left'}}>
@@ -542,7 +544,7 @@ export default function Home() {
                         </Grid>
                     </Grid>
                 </Grid>
-                <Grid id="right" container item xs={8} style={{ backgroundColor: '#8ab3ff', height: '100vh' }}>
+                <Grid id="right" container xs style={{ backgroundColor: '#8ab3ff', height: '100vh', minWidth: '320px' }}>
                     <Grid container direction="column">
                         { currChat.id ?
                             <div>
