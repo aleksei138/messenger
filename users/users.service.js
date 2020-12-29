@@ -1,5 +1,7 @@
 const config = require('config.json');
 const jwt = require('jsonwebtoken');
+const crypto = require('crypto');
+
 const {MongoClient} = require('mongodb');
 const DATABASE_NAME = "messenger";
 
@@ -94,10 +96,13 @@ async function createUser(user) {
         const database = client.db(DATABASE_NAME);
         const collection = database.collection("users");
         const id = newGuid();
+        const salt = crypto.randomBytes(48).toString('hex');
+        const hash = crypto.createHash("sha256").update(user.password + salt).digest('hex');
         const result = await collection.insertOne({
-            id: id,
+            id,
             username: user.username.trim(),
-            password: user.password,
+            hash,
+            salt,
             firstName: capitalizeFirstLetter(user.firstName),
             lastName: capitalizeFirstLetter(user.lastName),
             lastSeen: new Date(),
@@ -146,10 +151,19 @@ async function authenticate({ username, password }) {
 
     const user = await findUser(username);
 
-    if (!user) throw 'Username is incorrect'; 
-    
-    // TODO: hash and salt
-    if (user.password !== password) throw 'Password is incorrect';
+    if (!user) 
+        throw 'Username is incorrect'; 
+
+    if (user.hash) {
+        const computed = crypto.createHash("sha256").update(password + user.salt).digest('hex');
+        if (computed !== user.hash) 
+            throw 'Password is incorrect';
+    }
+    else {
+        // deprecated
+        if (user.password !== password) 
+            throw 'Password is incorrect';
+    }
 
     // create a jwt token for one year
     const token = jwt.sign({ sub: user.id }, config.secret, { expiresIn: '1y' });
