@@ -24,25 +24,28 @@ import Dialog from '@material-ui/core/Dialog';
 import Avatar from '@material-ui/core/Avatar';
 import ExitToAppIcon from '@material-ui/icons/ExitToApp';
 import DeleteIcon from '@material-ui/icons/Delete';
+import {sent, seen, sending} from './ticks'
 
 
 const currentUserId = localStorage.getItem('userId');
 
 
+
+
 export function ChatListElement(props) {
 
-    var title = props.title;
+    var title = props.item.title;
     if (!title) {
-        if (props.type === 'private') {
-            title = props.participants[0].id === currentUserId ? props.participants[1].name : props.participants[0].name;            
+        if (props.item.type === 'private') {
+            title = props.item.participants[0].id === currentUserId ? props.item.participants[1].name : props.item.participants[0].name;            
         }            
         else {
-            title = props.participants.map(p => p.name).join(', ');
+            title = props.item.participants.map(p => p.name).join(', ');
         }            
     }
 
     var avatarLetters = '';
-    if (props.type === 'private' && title) {
+    if (props.item.type === 'private' && title) {
         const splited = title.split(' ');
         avatarLetters = splited.length > 1 ? splited[0][0] + splited[1][0] : title[0];
     }
@@ -59,11 +62,15 @@ export function ChatListElement(props) {
         }
     }
 
+    function selectChat(){
+        props.onSelect({id: props.item.id, title: title, participants: props.item.participants, type: props.item.type});
+    }
+
     return (
-        <div className="chat-list-element" onClick={() => props.onSelect({id: props.id, title: title, participants: props.participants, type: props.type})}>
+        <div className={`chat-list-element ${props.item.selected && "chat-list-selected"}`} onClick={selectChat}>
             <div className='chat-list-content'>
                 <div className='chat-list-icon'>
-                    {props.type === 'private' ?
+                    {props.item.type === 'private' ?
                         <Avatar style={{marginTop: 'auto', marginBottom: 'auto'}}>{avatarLetters}</Avatar>
                         : <GroupIcon/>
                     }
@@ -71,25 +78,25 @@ export function ChatListElement(props) {
                 <div className='chat-list-description'>
                     <div className="chat-list-header">
                         <div className="chat-list-title">{title}</div>
-                        {props.unread > 0 && 
+                        {props.item.unread > 0 && 
                             <div className="chat-list-unread-wrapper">
-                                <div className="chat-list-unread-count">{props.unread}</div>
+                                <div className="chat-list-unread-count">{props.item.unread}</div>
                             </div>
                         }      
-                        {!props.hasBeenRead &&
+                        {!props.item.hasBeenRead &&
                             <div className="chat-list-hasNotBeenRead"></div>
                         }          
-                        {props.lastMessage.from && 
-                                <div className="chat-list-time">{formatDate(props.lastMessage.time)}</div>
+                        {props.item.lastMessage.from && 
+                                <div className="chat-list-time">{formatDate(props.item.lastMessage.time)}</div>
                         }
                     </div>
-                    {props.lastMessage.from && 
+                    {props.item.lastMessage.from && 
                         
                         <div style={{display: 'flex'}}>
-                            { props.lastMessage.from === currentUserId &&
-                                <span className="chat-list-from" style={{color: '#56b4fc', fontSize: '13px', marginRight: '0.3em'}}>You:</span>
+                            { props.item.lastMessage.from === currentUserId &&
+                                <span className={props.item.selected ? "you-label-selected" : "you-label"}>You:</span>
                             }
-                            <span className="chat-list-message">{props.lastMessage.text}</span>
+                            <span className="chat-list-message">{props.item.lastMessage.text}</span>
                         </div>
                     }
                 </div>
@@ -102,8 +109,8 @@ export function ChatListElement(props) {
 export function Message(props)  {
 
     var from = '';
-    if (props.chat.type !== 'private' && props.sender !== currentUserId){
-        let participant = props.chat.participants.find(p => p.id === props.sender);
+    if (props.chat.type !== 'private' && props.message.sender !== currentUserId){
+        let participant = props.chat.participants.find(p => p.id === props.message.sender);
         if (participant)
             from = participant.name;
     }
@@ -123,26 +130,42 @@ export function Message(props)  {
     }         
 
     return (
-        <div className="message-wrapper">
-            {currentUserId !== props.sender &&
-                <div className="others-message-triangle"></div>
-            }                
-            <div className={`message-body ${currentUserId === props.sender ? "my-message" : "others-message"}`}>
-                <div style={{display: 'flex'}}>
-                    {from && 
-                        <div className="message-from">{`${from}:`}</div>
-                    }
-                <div className="message-text">{props.text}</div>
+        <div>
+            { props.message.firstUnseen === true &&
+                <div class="unread-messages-wrapper"><div class="unread-messages">New messages</div></div>
+            }
+            <div className="message-wrapper">
+                {currentUserId !== props.message.sender &&
+                    <div className="others-message-triangle"></div>
+                }                
+                <div className={`message-body ${currentUserId === props.message.sender ? "my-message" : "others-message"}`}>
+                    <div style={{display: 'flex'}}>
+                        {from && 
+                            <div className="message-from">{`${from}:`}</div>
+                        }
+                    <div className="message-text">{props.message.text}</div>
+                    </div>
+                        {props.message.type === 'full' 
+                            ? <div style={{display: 'flex'}}><div className="message-time">{formatDate(props.message.time)}</div>
+                                { props.message.sent === false && props.message.sender === currentUserId &&
+                                    <div className="message-tick">{sending}</div>
+                                }
+                                { props.message.seen === true && props.message.sender === currentUserId &&
+                                    <div className="message-tick">{seen}</div>                        
+                                }
+                                { props.message.seen === false && (props.message.sent === true || props.message.sent == null) && props.message.sender === currentUserId &&
+                                    <div className="message-tick">{sent}</div>   
+                                }
+                            
+                            </div>
+                            : <div style={{ fontSize: '11px'}}>typing<Dot>.</Dot><Dot>.</Dot><Dot>.</Dot></div>                        
+                        }
+                    
                 </div>
-                {props.type === 'full' 
-                    ? <div className="message-time">{formatDate(props.time)}</div>
-                    : <div style={{ fontSize: '11px'}}>typing<Dot>.</Dot><Dot>.</Dot><Dot>.</Dot></div>                        
-                }
-                
+                {currentUserId === props.message.sender &&
+                    <div className="my-message-triangle"></div>
+                } 
             </div>
-            {currentUserId === props.sender &&
-                <div className="my-message-triangle"></div>
-            } 
         </div>
         );    
 }
@@ -338,12 +361,9 @@ export default function Home() {
     const [ interlocutor, setInterlocutor ] = useState(); // for last seen of the current interlocutor
     const { lastSeen, setLastSeen, reportOnline, reportOffline } = useLastSeen(interlocutor); // last seen manager
 
-    // has the last message been seen ?
-    const [seen, setSeen] = useState();
-
     // on page load
     useEffect(()=>{
-       
+        reportOnline();
         // do display lastSeens
         $(window).on("focus", () => {
             reportOnline();
@@ -385,7 +405,6 @@ export default function Home() {
     useEffect(() => {
         const chat = chats.find(x => x.id === currChat.id);
         if (chat) {
-            setSeen(chat.hasBeenRead);
             scrollToBottom();
         }
         else {
@@ -530,25 +549,19 @@ export default function Home() {
                                 {chats.map(item =>
                                     <ChatListElement 
                                         onSelect={args => setCurrChat(args)}
-                                        key={item.id} 
-                                        id={item.id} 
-                                        type={item.type}
-                                        title={item.title}
-                                        unread={item.unread}
-                                        participants={item.participants} 
-                                        lastMessage={item.lastMessage} 
-                                        hasBeenRead={item.hasBeenRead}
-                                        lastMessageTime={item.lastMessageTime} />
+                                        key={item.id}
+                                        item={item}
+                                        />
                                     )}
                             </div>
                         </Grid>
                     </Grid>
                 </Grid>
-                <Grid id="right" container xs style={{ backgroundColor: '#8ab3ff', height: '100vh', minWidth: '320px' }}>
+                <Grid id="right" container item xs style={{ backgroundColor: '#8ab3ff', height: '100vh', minWidth: '320px' }}>
                     <Grid container direction="column">
                         { currChat.id ?
                             <div>
-                                <Grid id="chat-header" style={{ backgroundColor: 'white', display: 'flex', height: '7vh' }}>
+                                <Grid id="chat-header" style={{ backgroundColor: 'white', display: 'flex', minHeight: '7vh' }}>
                                     <ChatInfo type={currChat.type} title={currChat.title} lastSeen={lastSeen} />
                                     <div id="chat-options">
                                         <div style={{marginTop: '0.5em', marginRight: '0.5em'}}>
@@ -583,24 +596,13 @@ export default function Home() {
                                             <div style={{ width: '100%'}}>
                                                 <div style={{ width: '100%'}}>
                                                     {messages.map(item =>
-                                                        <Message 
-                                                            chat={currChat} 
-                                                            key={item.id} 
-                                                            sender={item.sender} 
-                                                            type={item.type}
-                                                            time={item.time}
-                                                            text={item.text} />
+                                                        <Message chat={currChat} message={item} key={item.id} />
                                                     )}
                                                 </div>
-                                                {messages && messages.length > 0 && messages[messages.length - 1].sender === currentUserId && seen &&
-                                                    <div style={{ width: '100%'}}>
-                                                        <div style={{ marginLeft: 'auto', width: 'fit-content', paddingRight: '2em'}}>Seen</div>
-                                                    </div>
-                                                }
                                             </div>
                                         }                                        
                                     </Grid>
-                                    <Grid container style={{ height: '8vh', backgroundColor: 'white'}}>
+                                    <Grid container style={{ minHeight: '8vh', backgroundColor: 'white'}}>
                                         <form style={{ width: '100%'}} onSubmit={sendFullMessage} noValidate>
                                             <div id="sending-form">
                                                 <div style={{ marginRight: '20px', marginTop: '10px'}}>
@@ -632,6 +634,7 @@ export default function Home() {
                                                         fullWidth                                                    
                                                         placeholder="Write a message"
                                                         autoFocus
+                                                        autoComplete="off"
                                                         onChange={event => {
                                                             const { value } = event.target;
                                                             currMessage.current.text = value;

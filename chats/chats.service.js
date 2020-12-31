@@ -11,7 +11,8 @@ module.exports = {
     setUnreadForChat,
     findChat,
     findChatParticipants,
-    deleteChat
+    deleteChat,
+    setSeen
 };
 
 const groupBy = (xs, key) => {
@@ -266,15 +267,17 @@ async function createNewPrivateChat(userId, chatId, participants, messageId) {
 
         const userChats = database.collection("userChats");        
         participants.forEach( async (p) => {
-            await userChats.insertOne({
+            let inserted = await userChats.insertOne({
                 userId: p.id,
                 chatId,
                 unread: 0
-            });
+            }).insertedCount;
+            if (inserted === 0)
+                throw Error('Cannot insert into "userChats"')
         });
 
         const chats = database.collection("chats");
-        await chats.insertOne({
+        let inserted = await chats.insertOne({
             id: chatId,
             type: 'private', 
             title: '',
@@ -283,10 +286,15 @@ async function createNewPrivateChat(userId, chatId, participants, messageId) {
             createdDate: new Date()
         });
 
+        if (inserted.insertedCount === 0)
+            throw Error('Cannot insert into "chats"')
+
+        return {id: chatId};
         
     }
     catch (e) {
         console.error(e);
+        return null;
     } finally {
         await client.close();
     }
@@ -300,31 +308,44 @@ async function saveMessage(message) {
         await client.connect();
         const database = client.db(DATABASE_NAME);
         const collection = database.collection("messages");
-        // save message
-        await collection.insertOne({
-            id: message.id,
-            type: "full",
-            chatId: message.chatId,
-            sender: message.sender,
-            text: message.text,
-            time: message.time
-        });
-        
+
         if (message.isNewChat && message.to.length === 2){
-            await createNewPrivateChat(
+            let res = await createNewPrivateChat(
                 message.sender, 
                 message.chatId,
                 message.to,
                 message.id
                 );
+            if (!res)
+                throw Error('Cannot create new chat');
         }
+        
+        // save message
+        let result = await collection.insertOne({
+            id: message.id,
+            type: "full",
+            chatId: message.chatId,
+            sender: message.sender,
+            text: message.text,
+            time: message.time,
+            seen: false,
+            seenAt: null
+        }).insertedCount;
+
+        if (result == 0)
+            throw Error('Cannot insert into "messages"')
+        
+        
         
         // update chat header
         await updateChat(message.chatId, message);
+
+        return {id: message.id};
         
     }
     catch (e) {
         console.error(e);
+        return null;
     } finally {
         await client.close();
     }
@@ -345,6 +366,32 @@ async function deleteChat(chatId) {
             userChats.deleteMany({chatId: chatId}),
             messages.deleteMany({chatId: chatId})
         ]);        
+    }
+    catch (e) {
+        console.error(e);
+    } finally {
+        await client.close();
+    }
+}
+
+async function setSeen(messageId) {
+    const uri = config.connectionString;
+    const client = new MongoClient(uri, { useUnifiedTopology: true } );
+    try {
+        await client.connect();
+        const database = client.db(DATABASE_NAME);
+        const collection = database.collection("messages");        
+        await collection.updateOne(
+            {
+                id: messageId
+            },
+            {
+                $set: { 
+                    seen: true, 
+                    seenAt: new Date() 
+                }
+            }
+        );
     }
     catch (e) {
         console.error(e);

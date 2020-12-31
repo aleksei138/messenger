@@ -60,6 +60,10 @@
     font-size: 14px;
     padding: 0.2em;
 }
+.message-tick {
+    padding-left: 0.5em;
+}
+
 
 #chat-info {
     display: flex;
@@ -67,6 +71,8 @@
     float: left;
     margin-right: auto;
     margin-left: 1em;
+    margin-bottom: auto;
+    margin-top: auto;
 }
 
 #chat-info-title {
@@ -110,6 +116,43 @@
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+}
+
+.chat-list-selected {
+    background-color: #a0c0fb;
+    color: #ffffff;
+}
+
+.unread-messages {
+    font-size: 15px;
+    background-color: #ffffff;
+    border-radius: 1.5em;
+    width: fit-content;
+    margin-left: auto;
+    margin-right: auto;
+    padding-top: 0.5em;
+    padding-bottom: 0.5em;
+    padding-left: 1em;
+    padding-right: 1em;
+}
+
+.unread-messages-wrapper {
+    width: 100%;
+    padding-top: 1em;
+    padding-bottom: 1em;
+    background-color: #c9def1;
+}
+
+.you-label {
+    color: #56b4fc;
+    font-size: 13px;
+    margin-right: 0.3em;
+}
+
+.you-label-selected {
+    color: #ffffff;
+    font-size: 13px;
+    margin-right: 0.3em;
 }
 
 

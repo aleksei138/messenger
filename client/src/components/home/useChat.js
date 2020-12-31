@@ -5,6 +5,7 @@ import $ from 'jquery'
 const NEW_CHAT_MESSAGE_EVENT = "newChatMessage";
 const RECEIPT_EVENT = "receipt";
 const UPDATE_EVENT = "update";
+const PARTIAL_MESSAGES_LIFESPAN = 10 * 1000;
 
 const token = localStorage.getItem('authentication');
 const currentUserId = localStorage.getItem('userId');
@@ -30,50 +31,85 @@ const useChat = (chatId) => {
   // To store data between rerenders
   const socket = useRef(); // WS connection
   const currChatId = useRef(chatId); // current chat
-  const chatHeaders = useRef([]); // copy of 'chats' from state
+  const currentChats = useRef([]); // copy of 'chats' from state
   const currentMessages = useRef([]); // copy of 'messages' from state
 
   // "history" to optimize loading : if we've loaded the chat before, don't load again, just fetch from history
-  const allChats = useRef({});
+  const history = useRef({});
 
-  const isOnline = useRef(true); // if current user is online
-  const schediledReceipt = useRef(); // if current user is offline, receipt to send when he goes
+  const isOnline = useRef(true); // if current user is online (window is focused)
+  const queuedReceipts = useRef([]); // if current user is offline, receipts to send when he goes
 
-  const  sendSchediledReceipt = () => {   
-    if (schediledReceipt.current) {
-        // drop unread for curr chat
-        let chatsCopy = chatHeaders.current;
-        let index = chatsCopy.findIndex(x => x.id === schediledReceipt.current.chatId);
-        chatsCopy[index].unread = 0;  
+  // self-destruct timer for partial messsages
+  const timer = useRef();
 
-        setChats(chatsCopy);        
-
-        socket.current.emit(RECEIPT_EVENT, schediledReceipt.current);
+  // exterminate partial message
+  const exterminate = (args) => {
+    if (args.chatId === currChatId.current) {
+        let index = currentMessages.current.findIndex(m => m.id === args.messageId && m.type !== 'full');
+        if (index > -1) {
+            currentMessages.current.splice(index, 1);
+        }
+        setMessages(currentMessages.current);
     }
-    schediledReceipt.current = null;
+    else {
+        if (history.current[args.chatId]) {
+            let index = history.current[args.chatId].findIndex(m => m.id === args.messageId && m.type !== 'full');
+            if (index > -1) {
+                history.current[args.chatId].splice(index, 1);
+            }
+        }
+    }
+  };
+
+  // send 'seen' recepts when window is focused
+  const sendQueuedReceipts = () => {   
+    if (queuedReceipts.current.length > 0) {
+
+        // drop unread for curr chat
+        let index = currentChats.current.findIndex(x => x.id === currChatId.current);
+        currentChats.current[index].unread = 0;
+        setChats(currentChats.current);
+
+        // label messages as seen
+        let i = currentMessages.current.length - 1;
+        while (
+            i >= 0 
+            && !currentMessages.current[i].seen
+            && currentMessages.current[i].sender !== currentUserId
+            ) {
+            currentMessages.current[i].seen = true;
+            --i;
+        }           
+        
+        queuedReceipts.current.forEach(x => {
+            socket.current.emit(RECEIPT_EVENT, x);
+        });
+    }
+    queuedReceipts.current = [];
   };
 
 
-  // update headerd on new message
+  // update header on new message
   const updateChatHeaders = (message, increaseUnread, setUnsen) => {
-    const index = chatHeaders.current.findIndex(x => x.id === message.chatId);
+    const index = currentChats.current.findIndex(x => x.id === message.chatId);
     if (index > -1) { // for old chat
         if (increaseUnread)
-            chatHeaders.current[index].unread = chatHeaders.current[index].unread + 1;
+            currentChats.current[index].unread = currentChats.current[index].unread + 1;
             
-        chatHeaders.current[index].lastMessage.text = message.text;
-        chatHeaders.current[index].lastMessage.from = message.sender;
-        chatHeaders.current[index].lastMessage.time = message.time;
+        currentChats.current[index].lastMessage.text = message.text;
+        currentChats.current[index].lastMessage.from = message.sender;
+        currentChats.current[index].lastMessage.time = message.time;
 
         if (setUnsen) {
-            chatHeaders.current[index].hasBeenRead = false;
+            currentChats.current[index].hasBeenRead = false;
         }
 
-        chatHeaders.current.sort((a, b) => {
+        currentChats.current.sort((a, b) => {
             return new Date(b.lastMessage.time) - new Date(a.lastMessage.time);
         });
         // To rerender
-        setChats([...chatHeaders.current]); 
+        setChats([...currentChats.current]); 
     }
     else { // for new chat
         const unread = increaseUnread ? 1 : 0;
@@ -99,28 +135,30 @@ const useChat = (chatId) => {
                 time: message.time
             }
         };
-        chatHeaders.current = [newHeader].concat(chatHeaders.current);
-        setChats([...chatHeaders.current]);
+        currentChats.current = [newHeader].concat(currentChats.current);
+        setChats([...currentChats.current]);
     }       
   };
 
-  const setSeen = (chatId, seen) => {
-      const index = chatHeaders.current.findIndex(x => x.id === chatId);
+  // update header
+  const setSeenForChat = (chatId) => {
+      const index = currentChats.current.findIndex(x => x.id === chatId);
       if (index > -1) {
-        chatHeaders.current[index].hasBeenRead = seen;
-      }
-      setChats([...chatHeaders.current]);
+        currentChats.current[index].hasBeenRead = true;
+        setChats([...currentChats.current]);
+      }      
   };
 
+  // delete or edit chat or message
   const processUpdate = (update) => {
     if (update.action === 'delete') {
         if (update.target === 'chat') {
-            const index = chatHeaders.current.findIndex(x => x.id === update.targetId);
+            const index = currentChats.current.findIndex(x => x.id === update.targetId);
             if (index > -1) {
-                chatHeaders.current.splice(index, 1);
-                setChats(chatHeaders.current);
-                if (allChats.current[update.targetId])
-                    delete allChats.current[update.targetId];
+                currentChats.current.splice(index, 1);
+                setChats(currentChats.current);
+                if (history.current[update.targetId])
+                    delete history.current[update.targetId];
                 if (update.targetId === currChatId.current)
                     setMessages([...[]]);
             }
@@ -128,153 +166,274 @@ const useChat = (chatId) => {
     }
   };
 
-  // triggers when new chat is selected
+  // Only first time, no need to establish WS connection and load chat headers mutiple times
   useEffect(() => {
 
-    // Only first time, no need to establish WS connection mutiple times. One socket for all chats
-    if (!socket.current) {
-        // WS connection
-        socket.current = socketIOClient({
-            query: { token, type: 'chat' }
-        });
+    // WS connection
+    socket.current = socketIOClient({
+        query: { 
+            token, 
+            type: 'chat' 
+        }
+    });
 
-        socket.current.on(RECEIPT_EVENT, receipt => {
-            setSeen(receipt.chatId, true);
-        });
+    // processing receipts 
+    socket.current.on(RECEIPT_EVENT, receipt => {
 
-        socket.current.on(UPDATE_EVENT, update => {
-            processUpdate(update);
-        });
-        
-        // Listen for incoming messages
-        socket.current.on(NEW_CHAT_MESSAGE_EVENT, (message) => {
-            if (message.type === 'full') { // for full messages
-                // if for the current chat, process 
-                
-                if (message.chatId === currChatId.current) {  
-                    
-                    var increaseUnread = false;
-                    // if user is online suggest he has red the message
-                    if (isOnline.current) {
-                        socket.current.emit(RECEIPT_EVENT, {chatId: message.chatId, userId: message.sender});
-                        
-                    }
-                    else { // otherwise wait till he goes online
-                        schediledReceipt.current = {chatId: message.chatId, userId: message.sender};
-                        increaseUnread = true;
-                    }
-                    
-                    updateChatHeaders(message, increaseUnread, false);
-
-                    // remove last partial message if full message with the same id came
-                    if (currentMessages.current.length > 0 && currentMessages.current[currentMessages.current.length - 1].id === message.id)
-                        currentMessages.current.pop();
-
-                    currentMessages.current.push(message);
-                    setMessages([...currentMessages.current]); // rerender messages                 
-                }                
-                else { // otherwise, increase unread counter and update headers
-                    updateChatHeaders(message, true, false);
-                    if (allChats.current[message.chatId]) // add to history
-                        allChats.current[message.chatId].push(message);
+        if (receipt.type === 'seen') {
+            setSeenForChat(receipt.chatId); // update header
+            if (receipt.chatId === currChatId.current) { // update message if for the current chat
+                let index = currentMessages.current.findIndex(x => x.id === receipt.messageId);
+                if (index > -1) {
+                    currentMessages.current[index].seen = true;
+                    setMessages([...currentMessages.current]);
                 }
             }
-            else { // for partial messages
-                if (message.chatId === currChatId.current) {
-                    
-                    // if not the first in the chat
-                    if (currentMessages.current.length > 0) { 
-                        
-                        // if previous version of this message exists, update it
-                        if (currentMessages.current[currentMessages.current.length - 1].id === message.id) { 
-                            if (!message.text || !message.text.trim()) // if message is empty, remove
-                                currentMessages.current.pop();
-                            else
-                                currentMessages.current[currentMessages.current.length - 1].text = message.text; // update
-                        }                            
-                        else
-                            currentMessages.current.push(message)
-
-                        setMessages([...currentMessages.current]); // finaly rerender
-                    }
-                    else { // message is fist in the chat, just push and rerender
-                        currentMessages.current.push(message);
-                        setMessages([...currentMessages.current]);
-                    }              
-                }  
+            else if (history.current[receipt.chatId]) { // update message if for the other chat
+                let index = history.current[receipt.chatId].findIndex(x => x.id === receipt.messageId);
+                if (index > -1) {
+                    history.current[receipt.chatId][index].seen = true;
+                }
             }
-            
-        }); 
+        }              
+
+        if (receipt.type === 'sent') {
+            if (receipt.chatId === currChatId.current) { // update message if for the current chat
+                let index = currentMessages.current.findIndex(x => x.id === receipt.messageId);
+                if (index > -1) {
+                    currentMessages.current[index].sent = true;
+                    setMessages([...currentMessages.current]);
+                }
+            }
+            else if (history.current[receipt.chatId]) { // update message if for the other chat
+                let index = history.current[receipt.chatId].findIndex(x => x.id === receipt.messageId);
+                if (index > -1) {
+                    history.current[receipt.chatId][index].sent = true;
+                }
+            }
+        }
+    });
+
+
+    // Deleting or editing chat or message
+    socket.current.on(UPDATE_EVENT, update => {
+        processUpdate(update);
+    });
     
-        // load all chats
-        fetch('api/chats/loadchatlist').then((response) => {
+    // Listen for incoming messages
+    socket.current.on(NEW_CHAT_MESSAGE_EVENT, (message) => {
+        if (message.type === 'full') { // for full messages
+            
+            // if for the current chat, process                 
+            if (message.chatId === currChatId.current) {  
+                
+                var increaseUnread = false;
+                // if user is online suggest he has red the message
+                if (isOnline.current) {
+                    socket.current.emit(RECEIPT_EVENT, {chatId: message.chatId, messageId: message.id, userId: message.sender});                        
+                }
+                else { // otherwise wait till he goes online
+                    queuedReceipts.current.push({chatId: message.chatId, messageId: message.id, userId: message.sender});                    
+                    increaseUnread = true;
+                }
+                
+                // put new message to header
+                updateChatHeaders(message, increaseUnread, false);
+
+                // remove last partial message if full message with the same id reiceved
+                if (currentMessages.current.length > 0 && currentMessages.current[currentMessages.current.length - 1].id === message.id)
+                    currentMessages.current.pop();
+
+                currentMessages.current.push(message);
+
+                // display 'New messages' separator                
+                if (!isOnline.current) { 
+                    updateLabel();
+                }
+
+                setMessages([...currentMessages.current]); // rerender messages                 
+            }                
+            else { // otherwise, increase unread counter and update headers
+                updateChatHeaders(message, true, false);
+
+                if (history.current[message.chatId]) // add to history
+                    history.current[message.chatId].push(message);
+            }
+        }
+        else { 
+            // for partial messages
+            if (message.chatId === currChatId.current) {
+                
+                // if not the first in the chat
+                if (currentMessages.current.length > 0) { 
+                    
+                    // if previous version of this message exists, update it
+                    if (currentMessages.current[currentMessages.current.length - 1].id === message.id) { 
+                        if (!message.text || !message.text.trim()) // if message is empty, remove
+                            currentMessages.current.pop();
+                        else
+                            currentMessages.current[currentMessages.current.length - 1].text = message.text; // update
+                    }                            
+                    else
+                        currentMessages.current.push(message)
+
+                    setMessages([...currentMessages.current]); // finaly rerender
+                }
+                else { // message is fist in the chat, just push and rerender
+                    currentMessages.current.push(message);
+                    setMessages([...currentMessages.current]);
+                }   
+
+                // self-destruct timer 
+                if (timer.current)
+                    window.clearTimeout(timer.current);
+                
+                timer.current = window.setTimeout(exterminate, PARTIAL_MESSAGES_LIFESPAN, { chatId: message.chatId, messageId: message.id });
+            }  
+        }
+        
+    }); 
+
+    // load chat headers
+    fetch('api/chats/loadchatlist').then((response) => {
+        if (!response.ok)
+            throw new Error();
+        return response.json();
+    }).then((data) => {
+        setChats(data);
+        currentChats.current = data;
+    }).catch((error) => {
+        console.error(error);
+    });
+
+    // set user online/offline
+    $(window).on("focus", () => {
+        isOnline.current = true;
+        sendQueuedReceipts();
+    });
+    
+    $(window).on("blur", () => {
+        isOnline.current = false;
+    });
+
+  }, []);
+
+
+  // triggers when new chat is selected
+  useEffect(() => {
+    if (!chatId)
+        return;
+    
+    setMessages([...[]]); // to hide messages from previous chat until new messages are loaded   
+
+    
+    // mark last message as seen
+    if (currentMessages.current.length > 0 
+        && currentMessages.current[currentMessages.current.length - 1].sender !== currentUserId
+        && currentMessages.current[currentMessages.current.length - 1].seen === false       
+    ) {
+        currentMessages.current[currentMessages.current.length - 1].seen = true;
+    }
+
+    history.current[currChatId.current] = currentMessages.current; // save messages from old chat
+
+    currChatId.current = chatId;
+
+    // load messages, if we don't have them
+    if (!history.current[currChatId.current]) {
+        // Load messages
+        fetch('api/chats/loadchat?' + new URLSearchParams({chatId: chatId}).toString()).then((response) => {
             if (!response.ok)
                 throw new Error();
             return response.json();
         }).then((data) => {
-            setChats(data);
-            chatHeaders.current = data;
+            currentMessages.current = data;
+            history.current[chatId] = data;
+            updateLabel();
+            dropUnreadAndSendRecepts();  
+            // select in header
+            currentChats.current.forEach(x => x.selected = false);
+            let index = currentChats.current.findIndex(x => x.id === chatId);
+            if (index > -1) {
+                currentChats.current[index].selected = true;
+            }
+            setChats([...currentChats.current]);
+            setMessages([...data]);
         }).catch((error) => {
             console.error(error);
         });
-
-        $(window).on("focus", () => {
-            isOnline.current = true;
-            sendSchediledReceipt();            
-        });
-        
-        $(window).on("blur", () => {
-            isOnline.current = false;
-        });
     }
-    
-    // chat is selected
-    if (chatId) {
-        setMessages([...[]]); // to hide messages from previous chat until new messages are loaded
-        allChats.current[currChatId.current] = currentMessages.current; // save messages from old chat
-
-        currChatId.current = chatId;
-
-        // drop unred for selected chat 
-        const index = chatHeaders.current.findIndex(x => x.id === chatId);
-        chatHeaders.current[index].unread = 0;        
-        setChats([...chatHeaders.current]);
-
-        if (chatHeaders.current[index].type === 'private') {
-            var interlocutor = chatHeaders.current[index].participants.find(x => x.id !== currentUserId);
-            if (interlocutor) {
-                socket.current.emit(RECEIPT_EVENT, { chatId, userId: interlocutor.id });
-            }
-            else {
-                socket.current.emit(RECEIPT_EVENT, { chatId });
-            }
-        }
-        else {
-            socket.current.emit(RECEIPT_EVENT, { chatId });
-        }
-
-        // load messages, if we don't have them
-        if (!allChats.current[currChatId.current]) {
-            // Load old messages
-            fetch('api/chats/loadchat?' + new URLSearchParams({chatId: chatId}).toString()).then((response) => {
-                if (!response.ok)
-                    throw new Error();
-                return response.json();
-            }).then((data) => {
-                setMessages([...data]);
-                currentMessages.current = data;
-                allChats.current[chatId] = data;
-            }).catch((error) => {
-                console.error(error);
-            });
-        }
-        else { // if we do, fetch from history
-            currentMessages.current = allChats.current[currChatId.current];
-            setMessages([...currentMessages.current]);
-        }
+    else { // if we do, fetch from history
+        currentMessages.current = history.current[currChatId.current];
+        updateLabel();
+        dropUnreadAndSendRecepts();   
+        // select in header
+        currentChats.current.forEach(x => x.selected = false);
+        let index = currentChats.current.findIndex(x => x.id === chatId);
+        if (index > -1) {
+            currentChats.current[index].selected = true;
+        }     
+        setMessages([...currentMessages.current]);        
     }
     
   }, [chatId]);
+
+  // set "New messages" label
+  const updateLabel = () => {
+    // drop "New message" label
+    currentMessages.current.forEach(x => x.firstUnseen = false);
+
+    let last = currentMessages.current[currentMessages.current.length - 1];
+    if (last.seen || last.sender === currentUserId) {
+        return;
+    }
+
+    // and find message where to display new
+    var firstUnseen = 0;
+    for (var j = currentMessages.current.length - 2; j >= 0; --j) {
+        if (currentMessages.current[j].seen || currentMessages.current[j].sender === currentUserId) {
+            firstUnseen = j + 1;
+            break;
+        }
+    }
+
+    currentMessages.current[firstUnseen].firstUnseen = true;
+
+  };
+
+
+  // when chat is selected consider messages as read
+  const dropUnreadAndSendRecepts = () => {
+        // drop unred for current chat 
+        const index = currentChats.current.findIndex(x => x.id === currChatId.current);
+        if (index > -1) {
+            const wasUnread = currentChats.current[index].unread;
+            currentChats.current[index].unread = 0;        
+            setChats([...currentChats.current]);
+            
+            // send receipts
+            if (currentChats.current[index].type === 'private' && wasUnread > 0) {     
+                // find recipient of recepts       
+                var interlocutor = currentChats.current[index].participants.find(x => x.id !== currentUserId);
+                if (interlocutor) {                    
+                    for (var i = currentMessages.current.length - 1; i >= 0; --i) {
+                        if (!currentMessages.current[i].seen && currentMessages.current[i].sender != currentUserId) {
+                            currentMessages.current[i].seen = true;
+                            socket.current.emit(RECEIPT_EVENT, { 
+                                chatId, 
+                                userId: interlocutor.id, 
+                                messageId: currentMessages.current[i].id 
+                            });
+                        }
+                        else {                            
+                            break;
+                        }                   
+                    }
+                }
+            }
+        }
+  };
+
 
   // =================================================
   // ========= function for revoking from UI =========
@@ -286,11 +445,14 @@ const useChat = (chatId) => {
     let msg = message;
     msg.isNewChat = currentMessages.current.length === 0;
     msg.senderName = userName;
+    msg.sent = false;
+    msg.seen = false;
 
     if (message.type === 'full') {
         // add to own messages and rerender
-        setMessages((messages) => [...messages, message]);
+        setMessages((messages) => [...messages, msg]);
         currentMessages.current.push(message);
+        updateLabel();
         updateChatHeaders(message, false, true);
     }
     
@@ -307,7 +469,7 @@ const useChat = (chatId) => {
   const newChat = (contact) => {
 
     // first, find out if it is an existing chat
-    let found = chatHeaders.current.find(x => {
+    let found = currentChats.current.find(x => {
         let f = x.participants.find(p => p.id === contact.id);
         return f ? true : false;
     });
@@ -332,6 +494,7 @@ const useChat = (chatId) => {
         ],
         unread: 0,
         hasBeenRead: true,
+        selected: true,
         title: contact.fullName,
         lastMessage: {
             from: '',
@@ -339,8 +502,9 @@ const useChat = (chatId) => {
             time: ''
         }
     };
-    chatHeaders.current = [newHeader].concat(chatHeaders.current);
-    setChats(chatHeaders.current);
+    currentChats.current.forEach(x => x.selected = false);
+    currentChats.current = [newHeader].concat(currentChats.current);
+    setChats(currentChats.current);
     return newHeader;
   };
 

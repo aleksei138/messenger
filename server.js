@@ -42,8 +42,11 @@ const LASTSEEN_EVENT = "lastSeen";
 io.on('connection', (socket) => {
 
     // create for a user a room with his id as room name to easily send messages to him
-    if (socket.handshake.query.type !== 'lastSeen') {
-      socket.join(socket.decoded.sub);
+    if (socket.handshake.query.type === 'chat') {
+      var connected = io.sockets.adapter.rooms[socket.decoded.sub];
+      if (!connected){ // !!! to prevent double connection
+        socket.join(socket.decoded.sub);
+      }      
     }
 
     //console.log(`user with id '${socket.decoded.sub}' connected for ${socket.handshake.query.type}`);
@@ -58,6 +61,9 @@ io.on('connection', (socket) => {
         userService.setLastSeen(socket.decoded.sub, false);
         io.to('LASTSEEN:' + socket.decoded.sub).emit('lastSeen', {userId: socket.decoded.sub, lastSeen: new Date(), online: false});
       }
+      if (socket.handshake.query.type === 'chat') {
+        socket.leave(socket.decoded.sub); // !!! to prevent double connection
+      }
     });
 
 
@@ -69,8 +75,9 @@ io.on('connection', (socket) => {
         //chatService.setIsRead(rec.messageId);
         chatService.dropUnreadForChat(socket.decoded.sub, rec.chatId);
         if (rec.userId) {
-          io.to(rec.userId).emit(RECEIPT_EVENT, {chatId: rec.chatId});
-        }        
+          io.to(rec.userId).emit(RECEIPT_EVENT, {chatId: rec.chatId, messageId: rec.messageId, type: 'seen'});
+        } 
+        chatService.setSeen(rec.messageId);      
     });
 
 
@@ -96,10 +103,7 @@ io.on('connection', (socket) => {
     // ================= last seens =================
     // ==============================================
 
-    if (socket.handshake.query.type === 'lastSeen') {
-      userService.setLastSeen(socket.decoded.sub, true);
-      io.to('LASTSEEN:' + socket.decoded.sub).emit('lastSeen', {userId: socket.decoded.sub, lastSeen: new Date(), online: true});
-    }
+    
 
     socket.on(LASTSEEN_EVENT, async (rst) => {
       // types : subscribe, unsubscribe, reportOnline, reportOffline
@@ -127,9 +131,12 @@ io.on('connection', (socket) => {
     // =================================================================
     socket.on(NEW_CHAT_MESSAGE_EVENT, async (msg) => {
 
-        // save message to db (only for new chats)
-        if (msg.type === 'full' && msg.isNewChat)
-          await chatService.saveMessage(msg);
+        if (msg.type === 'full') {
+          let saved = await chatService.saveMessage(msg);
+          if (saved)
+            io.to(msg.sender).emit(RECEIPT_EVENT, {chatId: msg.chatId, messageId: msg.id, type: 'sent'});
+        }
+        
         
         
         if (!msg.to) {
@@ -151,7 +158,8 @@ io.on('connection', (socket) => {
                 to: to.id,
                 chatId: msg.chatId,
                 text: msg.text,
-                time: msg.time
+                time: msg.time,
+                seen: false
               }
             }
             else {
@@ -162,7 +170,8 @@ io.on('connection', (socket) => {
                 to: to.id,
                 chatId: msg.chatId,
                 text: msg.text,
-                time: msg.time
+                time: msg.time,
+                seen: false
               }
             }
 
@@ -174,10 +183,6 @@ io.on('connection', (socket) => {
               chatService.setUnreadForChat(message.to, message.chatId);
           });
         } 
-
-        // save message to db
-        if (msg.type === 'full' && !msg.isNewChat)
-          await chatService.saveMessage(msg);
 
       });
   });
