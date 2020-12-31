@@ -43,7 +43,7 @@ io.on('connection', (socket) => {
 
     // create for a user a room with his id as room name to easily send messages to him
     if (socket.handshake.query.type === 'chat') {
-      var connected = io.sockets.adapter.rooms[socket.decoded.sub];
+      var connected = io.sockets.adapter.rooms.get(socket.decoded.sub);
       if (!connected){ // !!! to prevent double connection
         socket.join(socket.decoded.sub);
       }      
@@ -174,7 +174,6 @@ io.on('connection', (socket) => {
                 seen: false
               }
             }
-
             // sending message to room (to user)
             io.to(message.to).emit(NEW_CHAT_MESSAGE_EVENT, message); 
 
