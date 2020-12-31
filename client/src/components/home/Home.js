@@ -84,7 +84,7 @@ export function ChatListElement(props) {
                             </div>
                         }      
                         {!props.item.hasBeenRead &&
-                            <div className="chat-list-hasNotBeenRead"></div>
+                            <div className={props.item.selected ? "chat-list-unseen-selected" : "chat-list-unseen"}></div>
                         }          
                         {props.item.lastMessage.from && 
                                 <div className="chat-list-time">{formatDate(props.item.lastMessage.time)}</div>

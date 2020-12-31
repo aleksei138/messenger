@@ -119,7 +119,7 @@
 }
 
 .chat-list-selected {
-    background-color: #a0c0fb;
+    background-color: #528df9;
     color: #ffffff;
 }
 
@@ -200,9 +200,18 @@
     padding-left: 0.5em;
 }
 
-.chat-list-hasNotBeenRead {
+.chat-list-unseen {
     border-radius: 50%;
     background-color: #2895fc;
+    width: 1em;
+    height: 1em;
+    margin-left: 0.5em;
+    margin-top: 0.5em;
+}
+
+.chat-list-unseen-selected {
+    border-radius: 50%;
+    background-color: #c0c4c7;
     width: 1em;
     height: 1em;
     margin-left: 0.5em;
