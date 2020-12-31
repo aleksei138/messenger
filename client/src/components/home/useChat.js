@@ -27,6 +27,7 @@ const useChat = (chatId) => {
   // for rendering
   const [messages, setMessages] = useState([]); // current chat
   const [chats, setChats] = useState([]); // chat headers  
+  const [partial, setPartial] = useState({}); // last partial message
   
   // To store data between rerenders
   const socket = useRef(); // WS connection
@@ -44,22 +45,8 @@ const useChat = (chatId) => {
   const timer = useRef();
 
   // exterminate partial message
-  const exterminate = (args) => {
-    if (args.chatId === currChatId.current) {
-        let index = currentMessages.current.findIndex(m => m.id === args.messageId && m.type !== 'full');
-        if (index > -1) {
-            currentMessages.current.splice(index, 1);
-        }
-        setMessages(currentMessages.current);
-    }
-    else {
-        if (history.current[args.chatId]) {
-            let index = history.current[args.chatId].findIndex(m => m.id === args.messageId && m.type !== 'full');
-            if (index > -1) {
-                history.current[args.chatId].splice(index, 1);
-            }
-        }
-    }
+  const exterminate = () => {
+    setPartial({});
   };
 
   // send 'seen' recepts when window is focused
@@ -240,9 +227,8 @@ const useChat = (chatId) => {
                 // put new message to header
                 updateChatHeaders(message, increaseUnread, false);
 
-                // remove last partial message if full message with the same id reiceved
-                if (currentMessages.current.length > 0 && currentMessages.current[currentMessages.current.length - 1].id === message.id)
-                    currentMessages.current.pop();
+                // remove last partial message
+                exterminate();
 
                 currentMessages.current.push(message);
 
@@ -263,32 +249,19 @@ const useChat = (chatId) => {
         else { 
             // for partial messages
             if (message.chatId === currChatId.current) {
-                
-                // if not the first in the chat
-                if (currentMessages.current.length > 0) { 
-                    
-                    // if previous version of this message exists, update it
-                    if (currentMessages.current[currentMessages.current.length - 1].id === message.id) { 
-                        if (!message.text || !message.text.trim()) // if message is empty, remove
-                            currentMessages.current.pop();
-                        else
-                            currentMessages.current[currentMessages.current.length - 1].text = message.text; // update
-                    }                            
-                    else
-                        currentMessages.current.push(message)
 
-                    setMessages([...currentMessages.current]); // finaly rerender
-                }
-                else { // message is fist in the chat, just push and rerender
-                    currentMessages.current.push(message);
-                    setMessages([...currentMessages.current]);
-                }   
+                // if message is empty, remove
+                if (!message.text || !message.text.trim()) {
+                    setPartial({});
+                } else {
+                    setPartial(message);
+                }                
 
                 // self-destruct timer 
                 if (timer.current)
                     window.clearTimeout(timer.current);
                 
-                timer.current = window.setTimeout(exterminate, PARTIAL_MESSAGES_LIFESPAN, { chatId: message.chatId, messageId: message.id });
+                timer.current = window.setTimeout(exterminate, PARTIAL_MESSAGES_LIFESPAN);
             }  
         }
         
@@ -325,6 +298,7 @@ const useChat = (chatId) => {
         return;
     
     setMessages([...[]]); // to hide messages from previous chat until new messages are loaded   
+    setPartial({}); // hide partial message
 
     
     // mark last message as seen
@@ -508,7 +482,7 @@ const useChat = (chatId) => {
     return newHeader;
   };
 
-  return { messages, chats, sendMessage, newChat, updateObject };
+  return { messages, partial, chats, sendMessage, newChat, updateObject };
 
 };
 

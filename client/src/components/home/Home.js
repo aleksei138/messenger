@@ -356,7 +356,7 @@ export default function Home() {
     const isLive = useRef(isLiveStored);
     const [switchState, setSwitchState] = useState(isLiveStored); // for 'live' switch
 
-    const { messages, chats, sendMessage, newChat, updateObject } = useChat(currChat.id); // chat manager
+    const { messages, partial, chats, sendMessage, newChat, updateObject } = useChat(currChat.id); // chat manager
 
     const [ interlocutor, setInterlocutor ] = useState(); // for last seen of the current interlocutor
     const { lastSeen, setLastSeen, reportOnline, reportOffline } = useLastSeen(interlocutor); // last seen manager
@@ -379,6 +379,10 @@ export default function Home() {
     useEffect(() => {
         scrollToBottom();
     }, [messages]);
+
+    useEffect(() => {
+        scrollToBottom();
+    }, [partial]);
 
     // when chat is selected
     useEffect(() => {
@@ -598,6 +602,9 @@ export default function Home() {
                                                     {messages.map(item =>
                                                         <Message chat={currChat} message={item} key={item.id} />
                                                     )}
+                                                    { partial && partial.text && partial.chatId === currChat.id &&
+                                                        <Message chat={currChat} message={partial} key={partial.id} />                                                   
+                                                    }
                                                 </div>
                                             </div>
                                         }                                        
