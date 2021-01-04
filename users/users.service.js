@@ -1,9 +1,7 @@
 const config = require('config.json');
 const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
-
-const {MongoClient} = require('mongodb');
-const DATABASE_NAME = "messenger";
+const { Connection } = require('../helpers/DBConnection.js')
 
 module.exports = {
     authenticate,
@@ -22,11 +20,8 @@ function newGuid() {
   }
 
 async function findUser(username) {
-    const uri = config.connectionString;
-    const client = new MongoClient(uri, { useUnifiedTopology: true } );
-    try {
-        await client.connect();
-        const database = client.db(DATABASE_NAME);
+    try {        
+        const database = Connection.db;
         const collection = database.collection("users");
         const query = { username: username };
         const result = await collection.findOne(query);
@@ -37,17 +32,12 @@ async function findUser(username) {
     }
     catch (e) {
         console.error(e);
-    } finally {
-        await client.close();
-    }
+    } 
 }
 
 async function setLastSeen(userId, online) {
-    const uri = config.connectionString;
-    const client = new MongoClient(uri, { useUnifiedTopology: true } );
-    try {
-        await client.connect();
-        const database = client.db(DATABASE_NAME);
+    try {        
+        const database = Connection.db;
         const users = database.collection("users");
         await users.updateOne(
             {
@@ -60,17 +50,12 @@ async function setLastSeen(userId, online) {
     }
     catch (e) {
         console.error(e);
-    } finally {
-        await client.close();
-    }
+    } 
 }
 
 async function getLastSeen(userId) {
-    const uri = config.connectionString;
-    const client = new MongoClient(uri, { useUnifiedTopology: true } );
-    try {
-        await client.connect();
-        const database = client.db(DATABASE_NAME);
+    try {        
+        const database = Connection.db;
         const collection = database.collection("users");
         const query = { id: userId };
         const option = { projection: { lastSeen: 1, online: 1}};
@@ -79,9 +64,7 @@ async function getLastSeen(userId) {
     }
     catch (e) {
         console.error(e);
-    } finally {
-        await client.close();
-    }
+    } 
 }
 
 function capitalizeFirstLetter(string) {
@@ -89,11 +72,8 @@ function capitalizeFirstLetter(string) {
   }
 
 async function createUser(user) {
-    const uri = config.connectionString;
-    const client = new MongoClient(uri, { useUnifiedTopology: true } );
-    try {
-        await client.connect();
-        const database = client.db(DATABASE_NAME);
+    try {        
+        const database = Connection.db;
         const collection = database.collection("users");
         const id = newGuid();
         const salt = crypto.randomBytes(48).toString('hex');
@@ -115,17 +95,12 @@ async function createUser(user) {
     }
     catch (e) {
         console.error(e);
-    } finally {
-        await client.close();
-    }
+    } 
 }
 
 async function loadContacts(userId) {
-    const uri = config.connectionString;
-    const client = new MongoClient(uri, { useUnifiedTopology: true } );
-    try {
-        await client.connect();
-        const database = client.db(DATABASE_NAME);
+    try {        
+        const database = Connection.db;
         const collection = database.collection("users");
         const query = { id: {$ne: userId} };
         const options = {
@@ -142,15 +117,11 @@ async function loadContacts(userId) {
     }
     catch (e) {
         console.error(e);
-    } finally {
-        await client.close();
-    }
+    } 
 }
 
 async function authenticate({ username, password }) {
-
     const user = await findUser(username);
-
     if (!user) 
         throw 'Username is incorrect'; 
 
@@ -166,7 +137,7 @@ async function authenticate({ username, password }) {
     }
 
     // create a jwt token for one year
-    const token = jwt.sign({ sub: user.id }, config.secret, { expiresIn: '1y' });
+    const token = jwt.sign({ sub: user.id }, config.secret, { expiresIn: 60 * 60 * 24 * 365 });
 
     return {
         token: token,
@@ -174,7 +145,3 @@ async function authenticate({ username, password }) {
         userName: `${user.firstName} ${user.lastName}` 
     };
 }
-
-
-
-

@@ -15,14 +15,18 @@
     width: fit-content;
     height: fit-content;
     position: relative;
-    max-width: 50%;
+    max-width: 75%;
 }
 
 .my-message {
     border-top-right-radius: 0;
     margin-left: auto;
     margin-right: 0;
-    background-color: #dee9ff;
+    background-color: #dee9ff;    
+}
+
+.clickable {
+    cursor: pointer;
 }
 
 .others-message {
@@ -52,17 +56,21 @@
 .message-time {
     font-size: 11px;
     float: right;
+    padding: 0.3em;
+    color: #6b6060;
 }
 
 .message-from{
     font-weight: 600;
     height: fit-content;
-    font-size: 14px;
-    padding: 0.2em;
+    font-size: 11px;
+    padding-left: 0.3em;
 }
 .message-tick {
     padding-left: 0.5em;
 }
+
+/* ========================  chats ========================  */
 
 
 #chat-info {
@@ -93,6 +101,8 @@
     width: 100%;
 }
 
+/* ========================  chat headers ========================  */
+
 .chat-list-element {
     padding: 10px 10px 0px 10px;
     background-color: white;
@@ -101,6 +111,7 @@
 }
     .chat-list-element:hover {
         background-color: #d7e6fc;
+        color: rgba(0, 0, 0, 0.87);
     }
 .chat-list-title {
     font-size: 18px;
@@ -149,13 +160,16 @@
     margin-right: 0.3em;
 }
 
+.chat-list-sender {
+    font-size: 13px;
+    margin-right: 0.3em;
+}
+
 .you-label-selected {
     color: #ffffff;
     font-size: 13px;
     margin-right: 0.3em;
 }
-
-
 
 .chat-list-time {
     font-size: 13px;
@@ -186,6 +200,7 @@
     border-style: solid;
     border-width: 0px 0px 1px 0px;
     padding-top: 0.3em;
+    height: 5em;
 }
 
 .chat-list-icon {
@@ -200,7 +215,7 @@
     padding-left: 0.5em;
 }
 
-.chat-list-unseen {
+.chat-list-unread {
     border-radius: 50%;
     background-color: #2895fc;
     width: 1em;
@@ -209,13 +224,24 @@
     margin-top: 0.5em;
 }
 
-.chat-list-unseen-selected {
+.chat-list-unread-selected {
     border-radius: 50%;
     background-color: #c0c4c7;
     width: 1em;
     height: 1em;
     margin-left: 0.5em;
     margin-top: 0.5em;
+}
+
+/* ========================  other ========================  */
+
+.chat-participants {
+    min-width: 300px;
+    padding-top: 0.3em;
+    padding-bottom: 0.3em;
+    border-color: #a7a7a7;
+    border-style: solid;
+    border-width: 0px 0px 1px 0px;
 }
 
 
@@ -244,8 +270,8 @@
 #top-icons {
     display: flex;
     height: 100%;
-    float: right;
     margin-right: 0.5em;
+    margin-left: auto;
 }
 
 #sending-form {
@@ -280,9 +306,16 @@
 }
     .contact-wrapper:hover {
         background-color: #d7e6fc;
+        color: rgba(0, 0, 0, 0.87);
     }
 
-/* decent scrolling bar*/
+.contact-wrapper-selected {
+    cursor: pointer;
+    user-select: none;
+    background-color: #73fd6e;
+}
+
+/* ============== decent scrolling bar ===================*/
 
 /* width */
 ::-webkit-scrollbar {

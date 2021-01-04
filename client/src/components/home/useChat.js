@@ -44,43 +44,28 @@ const useChat = (chatId) => {
   // self-destruct timer for partial messsages
   const timer = useRef();
 
-  // exterminate partial message
-  const exterminate = () => {
-    setPartial({});
-  };
-
-  // send 'seen' recepts when window is focused
+  // send 'read' receipts when window is focused
   const sendQueuedReceipts = () => {   
     if (queuedReceipts.current.length > 0) {
 
         // drop unread for curr chat
         let index = currentChats.current.findIndex(x => x.id === currChatId.current);
         currentChats.current[index].unread = 0;
-        setChats(currentChats.current);
-
-        // label messages as seen
-        let i = currentMessages.current.length - 1;
-        while (
-            i >= 0 
-            && !currentMessages.current[i].seen
-            && currentMessages.current[i].sender !== currentUserId
-            ) {
-            currentMessages.current[i].seen = true;
-            --i;
-        }           
+        setChats(currentChats.current);         
         
         queuedReceipts.current.forEach(x => {
             socket.current.emit(RECEIPT_EVENT, x);
         });
-    }
-    queuedReceipts.current = [];
+
+        queuedReceipts.current = [];
+    }    
   };
 
 
   // update header on new message
   const updateChatHeaders = (message, increaseUnread, setUnsen) => {
     const index = currentChats.current.findIndex(x => x.id === message.chatId);
-    if (index > -1) { // for old chat
+    if (index > -1) { // for an existing chat
         if (increaseUnread)
             currentChats.current[index].unread = currentChats.current[index].unread + 1;
             
@@ -99,59 +84,157 @@ const useChat = (chatId) => {
         setChats([...currentChats.current]); 
     }
     else { // for new chat
-        const unread = increaseUnread ? 1 : 0;
-        const newHeader = {
-            id: message.chatId,
-            type: 'private',
-            participants: [
-                {
-                    id: message.sender,
-                    name: userName
-                },
-                {
-                    id: message.to,
-                    name: message.senderName
+
+        // get chat info
+        fetch('api/chats/getChatInfo?' + new URLSearchParams({chatId: message.chatId}).toString())
+        .then(response => {
+            response.json().then(header => {
+                if (!response.ok) {            
+                    throw new Error(header.message);
                 }
-            ],
-            unread: unread,
-            title: message.senderName,
-            hasBeenRead: true,
-            lastMessage: {
-                from: message.sender,
-                text: message.text,
-                time: message.time
-            }
-        };
-        currentChats.current = [newHeader].concat(currentChats.current);
-        setChats([...currentChats.current]);
+                currentChats.current = [header].concat(currentChats.current);
+                setChats([...currentChats.current]);
+            }).catch(error => {
+                console.error(error);
+            });
+        });        
     }       
   };
 
   // update header
-  const setSeenForChat = (chatId) => {
+  const setReadForChat = (chatId) => {
       const index = currentChats.current.findIndex(x => x.id === chatId);
       if (index > -1) {
-        currentChats.current[index].hasBeenRead = true;
-        setChats([...currentChats.current]);
+        if (!currentChats.current[index].hasBeenRead) {
+            currentChats.current[index].hasBeenRead = true;
+            setChats([...currentChats.current]);
+        }        
       }      
   };
 
   // delete or edit chat or message
   const processUpdate = (update) => {
+
     if (update.action === 'delete') {
         if (update.target === 'chat') {
             const index = currentChats.current.findIndex(x => x.id === update.targetId);
             if (index > -1) {
                 currentChats.current.splice(index, 1);
                 setChats(currentChats.current);
+
                 if (history.current[update.targetId])
                     delete history.current[update.targetId];
+
                 if (update.targetId === currChatId.current)
                     setMessages([...[]]);
             }
         }
+    } 
+    else if (update.action === 'update') {
+        if (update.target === 'chat' && update.object === 'participants')  {
+            const index = currentChats.current.findIndex(x => x.id === update.targetId);
+            if (index > -1) {
+                currentChats.current[index].participants = update.value;
+                setChats(currentChats.current);
+            }
+        }
     }
   };
+
+  const processReceipt = (receipt) => {
+    if (receipt.type === 'read') {
+        setReadForChat(receipt.chatId); // update header
+        if (receipt.chatId === currChatId.current) { // update message if for the current chat
+            let index = currentMessages.current.findIndex(x => x.id === receipt.messageId);
+            if (index > -1) {
+                currentMessages.current[index].ticks.push(receipt);
+                setMessages([...currentMessages.current]);
+            }
+        }
+        else if (history.current[receipt.chatId]) { // update message if for the other chat
+            let index = history.current[receipt.chatId].findIndex(x => x.id === receipt.messageId);
+            if (index > -1) {
+                history.current[receipt.chatId][index].ticks.push(receipt);
+            }
+        }
+    }              
+
+    if (receipt.type === 'sent') {
+        if (receipt.chatId === currChatId.current) { // update message if for the current chat
+            let index = currentMessages.current.findIndex(x => x.id === receipt.messageId);
+            if (index > -1) {
+                currentMessages.current[index].sent = true;
+                setMessages([...currentMessages.current]);
+            }
+        }
+        else if (history.current[receipt.chatId]) { // update message if for the other chat
+            let index = history.current[receipt.chatId].findIndex(x => x.id === receipt.messageId);
+            if (index > -1) {
+                history.current[receipt.chatId][index].sent = true;
+            }
+        }
+    }
+  };
+
+  const processNewMessage = (message) => {
+    if (message.type === 'full') { // for full messages
+            
+        // if for the current chat, process                 
+        if (message.chatId === currChatId.current) {  
+            
+            var increaseUnread = false;
+            // if user is online suggest he has red the message
+            if (isOnline.current) {
+                socket.current.emit(RECEIPT_EVENT, {chatId: message.chatId, messageId: message.id, userId: message.sender});                        
+            }
+            else { // otherwise wait till he goes online
+                queuedReceipts.current.push({chatId: message.chatId, messageId: message.id, userId: message.sender});                    
+                increaseUnread = true;
+            }
+            
+            // put new message to header
+            updateChatHeaders(message, increaseUnread, false);
+
+            // remove last partial message
+            setPartial({});
+
+            currentMessages.current.push(message);
+
+            // display 'New messages' separator                
+            if (!isOnline.current) { 
+                updateLabel();
+            }
+
+            setMessages([...currentMessages.current]); // rerender messages                 
+        }                
+        else { // otherwise, increase unread counter and update headers
+            updateChatHeaders(message, true, false);
+
+            if (history.current[message.chatId]) // add to history
+                history.current[message.chatId].push(message);
+        }
+    } else if (message.type === 'partial') { 
+        // for partial messages
+        if (message.chatId === currChatId.current) {
+
+            // if message is empty, remove
+            if (!message.text || !message.text.trim()) {
+                setPartial({});
+            } else {
+                setPartial(message);
+            }                
+
+            // self-destruct timer 
+            if (timer.current)
+                window.clearTimeout(timer.current);
+            
+            timer.current = window.setTimeout(() => setPartial({}), PARTIAL_MESSAGES_LIFESPAN);
+        }  
+    } else if (message.type === 'notification') {
+        updateChatHeaders(message, true, false);
+    }
+  };
+
 
   // Only first time, no need to establish WS connection and load chat headers mutiple times
   useEffect(() => {
@@ -164,43 +247,10 @@ const useChat = (chatId) => {
         }
     });
 
-    // processing receipts 
+    // Processing receipts 
     socket.current.on(RECEIPT_EVENT, receipt => {
-
-        if (receipt.type === 'seen') {
-            setSeenForChat(receipt.chatId); // update header
-            if (receipt.chatId === currChatId.current) { // update message if for the current chat
-                let index = currentMessages.current.findIndex(x => x.id === receipt.messageId);
-                if (index > -1) {
-                    currentMessages.current[index].seen = true;
-                    setMessages([...currentMessages.current]);
-                }
-            }
-            else if (history.current[receipt.chatId]) { // update message if for the other chat
-                let index = history.current[receipt.chatId].findIndex(x => x.id === receipt.messageId);
-                if (index > -1) {
-                    history.current[receipt.chatId][index].seen = true;
-                }
-            }
-        }              
-
-        if (receipt.type === 'sent') {
-            if (receipt.chatId === currChatId.current) { // update message if for the current chat
-                let index = currentMessages.current.findIndex(x => x.id === receipt.messageId);
-                if (index > -1) {
-                    currentMessages.current[index].sent = true;
-                    setMessages([...currentMessages.current]);
-                }
-            }
-            else if (history.current[receipt.chatId]) { // update message if for the other chat
-                let index = history.current[receipt.chatId].findIndex(x => x.id === receipt.messageId);
-                if (index > -1) {
-                    history.current[receipt.chatId][index].sent = true;
-                }
-            }
-        }
+        processReceipt(receipt);        
     });
-
 
     // Deleting or editing chat or message
     socket.current.on(UPDATE_EVENT, update => {
@@ -209,65 +259,10 @@ const useChat = (chatId) => {
     
     // Listen for incoming messages
     socket.current.on(NEW_CHAT_MESSAGE_EVENT, (message) => {
-        if (message.type === 'full') { // for full messages
-            
-            // if for the current chat, process                 
-            if (message.chatId === currChatId.current) {  
-                
-                var increaseUnread = false;
-                // if user is online suggest he has red the message
-                if (isOnline.current) {
-                    socket.current.emit(RECEIPT_EVENT, {chatId: message.chatId, messageId: message.id, userId: message.sender});                        
-                }
-                else { // otherwise wait till he goes online
-                    queuedReceipts.current.push({chatId: message.chatId, messageId: message.id, userId: message.sender});                    
-                    increaseUnread = true;
-                }
-                
-                // put new message to header
-                updateChatHeaders(message, increaseUnread, false);
-
-                // remove last partial message
-                exterminate();
-
-                currentMessages.current.push(message);
-
-                // display 'New messages' separator                
-                if (!isOnline.current) { 
-                    updateLabel();
-                }
-
-                setMessages([...currentMessages.current]); // rerender messages                 
-            }                
-            else { // otherwise, increase unread counter and update headers
-                updateChatHeaders(message, true, false);
-
-                if (history.current[message.chatId]) // add to history
-                    history.current[message.chatId].push(message);
-            }
-        }
-        else { 
-            // for partial messages
-            if (message.chatId === currChatId.current) {
-
-                // if message is empty, remove
-                if (!message.text || !message.text.trim()) {
-                    setPartial({});
-                } else {
-                    setPartial(message);
-                }                
-
-                // self-destruct timer 
-                if (timer.current)
-                    window.clearTimeout(timer.current);
-                
-                timer.current = window.setTimeout(exterminate, PARTIAL_MESSAGES_LIFESPAN);
-            }  
-        }
-        
+        processNewMessage(message);        
     }); 
 
-    // load chat headers
+    // Load chat headers
     fetch('api/chats/loadchatlist').then((response) => {
         if (!response.ok)
             throw new Error();
@@ -301,12 +296,12 @@ const useChat = (chatId) => {
     setPartial({}); // hide partial message
 
     
-    // mark last message as seen
+    // mark last message as read
     if (currentMessages.current.length > 0 
         && currentMessages.current[currentMessages.current.length - 1].sender !== currentUserId
-        && currentMessages.current[currentMessages.current.length - 1].seen === false       
+        && currentMessages.current[currentMessages.current.length - 1].read === false       
     ) {
-        currentMessages.current[currentMessages.current.length - 1].seen = true;
+        currentMessages.current[currentMessages.current.length - 1].read = true;
     }
 
     history.current[currChatId.current] = currentMessages.current; // save messages from old chat
@@ -323,24 +318,40 @@ const useChat = (chatId) => {
         }).then((data) => {
             currentMessages.current = data;
             history.current[chatId] = data;
-            updateLabel();
-            dropUnreadAndSendRecepts();  
+            if (data.length > 0) {
+                updateLabel();
+                dropUnreadAndSendRecepts();
+            }
+              
             // select in header
             currentChats.current.forEach(x => x.selected = false);
             let index = currentChats.current.findIndex(x => x.id === chatId);
             if (index > -1) {
                 currentChats.current[index].selected = true;
-            }
-            setChats([...currentChats.current]);
+                // load participants for group chats
+                if (currentChats.current[index].participants.length === 0) {
+                    // instead of await
+                    findCurrentChatParticipants().then(participants => {
+                        currentChats.current[index].participants = participants;
+                        setChats([...currentChats.current]);
+                    });
+                    
+                }
+                else {
+                    setChats([...currentChats.current]);
+                }
+            }            
             setMessages([...data]);
         }).catch((error) => {
             console.error(error);
         });
     }
-    else { // if we do, fetch from history
+    else { // if we have, fetch from history
         currentMessages.current = history.current[currChatId.current];
-        updateLabel();
-        dropUnreadAndSendRecepts();   
+        if (currentMessages.current.length > 0) {
+            updateLabel();
+            dropUnreadAndSendRecepts();  
+        }         
         // select in header
         currentChats.current.forEach(x => x.selected = false);
         let index = currentChats.current.findIndex(x => x.id === chatId);
@@ -352,57 +363,59 @@ const useChat = (chatId) => {
     
   }, [chatId]);
 
-  // set "New messages" label
-  const updateLabel = () => {
-    // drop "New message" label
-    currentMessages.current.forEach(x => x.firstUnseen = false);
-
-    let last = currentMessages.current[currentMessages.current.length - 1];
-    if (last.seen || last.sender === currentUserId) {
-        return;
+  const findCurrentChatParticipants = async () => {
+    const response = await fetch('api/chats/findChatParticipants?' + new URLSearchParams({chatId}).toString());
+    const participants = await response.json();
+    if (response.ok) {
+        return participants;
     }
+    else {
+        return [];
+    }
+  };
 
-    // and find message where to display new
-    var firstUnseen = 0;
-    for (var j = currentMessages.current.length - 2; j >= 0; --j) {
-        if (currentMessages.current[j].seen || currentMessages.current[j].sender === currentUserId) {
-            firstUnseen = j + 1;
-            break;
+  // update "New messages" label
+  const updateLabel = () => {
+
+    // drop "New message" label
+    currentMessages.current.forEach(x => x.firstUnread = false);
+
+    // find in headers
+    const index = currentChats.current.findIndex(x => x.id === currChatId.current);
+
+    if (index > -1) {
+        const unread = currentChats.current[index].unread;
+        const length = currentMessages.current.length;
+
+        if (unread > 0 && length > 0 && length - unread >= 0) {
+            currentMessages.current[length - unread].firstUnread = true;
         }
     }
-
-    currentMessages.current[firstUnseen].firstUnseen = true;
-
   };
 
 
   // when chat is selected consider messages as read
   const dropUnreadAndSendRecepts = () => {
-        // drop unred for current chat 
+        // find in headers
         const index = currentChats.current.findIndex(x => x.id === currChatId.current);
         if (index > -1) {
             const wasUnread = currentChats.current[index].unread;
-            currentChats.current[index].unread = 0;        
-            setChats([...currentChats.current]);
             
+            // drop unred for current chat 
+            currentChats.current[index].unread = 0; 
+            // rerender       
+            setChats([...currentChats.current]);
+
+            const length = currentMessages.current.length;
+
             // send receipts
-            if (currentChats.current[index].type === 'private' && wasUnread > 0) {     
-                // find recipient of recepts       
-                var interlocutor = currentChats.current[index].participants.find(x => x.id !== currentUserId);
-                if (interlocutor) {                    
-                    for (var i = currentMessages.current.length - 1; i >= 0; --i) {
-                        if (!currentMessages.current[i].seen && currentMessages.current[i].sender != currentUserId) {
-                            currentMessages.current[i].seen = true;
-                            socket.current.emit(RECEIPT_EVENT, { 
-                                chatId, 
-                                userId: interlocutor.id, 
-                                messageId: currentMessages.current[i].id 
-                            });
-                        }
-                        else {                            
-                            break;
-                        }                   
-                    }
+            if (wasUnread > 0 && length > 0) {
+                for (var i = length - 1; i >= length - wasUnread && i >= 0; --i) {
+                    socket.current.emit(RECEIPT_EVENT, { 
+                        chatId, 
+                        userId: currentMessages.current[i].sender, 
+                        messageId: currentMessages.current[i].id
+                    });
                 }
             }
         }
@@ -420,7 +433,7 @@ const useChat = (chatId) => {
     msg.isNewChat = currentMessages.current.length === 0;
     msg.senderName = userName;
     msg.sent = false;
-    msg.seen = false;
+    msg.ticks = [];
 
     if (message.type === 'full') {
         // add to own messages and rerender
@@ -439,13 +452,13 @@ const useChat = (chatId) => {
     socket.current.emit(UPDATE_EVENT, update);
   }
 
-  // start a new chat
-  const newChat = (contact) => {
+  // start a new private chat
+  const newPrivateChat = (contact) => {
 
     // first, find out if it is an existing chat
     let found = currentChats.current.find(x => {
         let f = x.participants.find(p => p.id === contact.id);
-        return f ? true : false;
+        return f && x.type === 'private' ? true : false;
     });
 
     if (found) {
@@ -479,10 +492,40 @@ const useChat = (chatId) => {
     currentChats.current.forEach(x => x.selected = false);
     currentChats.current = [newHeader].concat(currentChats.current);
     setChats(currentChats.current);
+
     return newHeader;
   };
 
-  return { messages, partial, chats, sendMessage, newChat, updateObject };
+  // start a new group chat
+  const newGroupChat = async (args) => { 
+    const params = {
+        participants: args.participants,
+        title: args.title
+    }
+
+    const response = await fetch('api/chats/createNewGroupChat', {
+        method: 'POST',
+        headers: {
+            'Accept': 'application/json',
+            'Content-Type': 'application/json'
+          },
+        body:  JSON.stringify(params)
+    });  
+
+    const header = await response.json();      
+
+    if (response.ok && header.id) {
+        currentChats.current.forEach(x => x.selected = false);
+        currentChats.current = [header].concat(currentChats.current);
+        setChats(currentChats.current);
+
+        return header;
+    } else {
+        throw Error(header.message);
+    }
+  };
+
+  return { messages, partial, chats, sendMessage, newPrivateChat, newGroupChat, updateObject };
 
 };
 
