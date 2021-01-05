@@ -72,60 +72,6 @@ function initialize(io) {
         });
     
     
-        // ==================================================================
-        // ================= delete or edit chat or message =================
-        // ==================================================================
-        socket.on(UPDATE_EVENT, async (update) => {        
-            if (update.action === 'delete') {
-              if (update.target === 'chat') {
-    
-                // =========================================
-                // ============ for chats ==================
-                // =========================================
-    
-                const chat = await chatService.getShortChatInfo(update.targetId); // find out about chat
-                var participants = await chatService.findChatParticipants(update.targetId, true);
-    
-                // if admin of group chat invoked it, or it's for a private chat, delete for everyone
-                if (chat.type === 'group' && chat.createdBy === socket.decoded.sub || chat.type === 'private') {
-    
-                  // delete from DB
-                  await chatService.deleteChat(update.targetId);
-                  // notify partivipants
-                  participants.forEach(async (x) => {
-                    if (x.id !== socket.decoded.sub) { 
-                      io.to(x.id).emit(UPDATE_EVENT, update);                  
-                    }
-                  });
-    
-                } else { // leave group chat and notify others
-    
-                  await chatService.leaveGroupChat(update.targetId, socket.decoded.sub);
-    
-                  let index = participants.findIndex(x => x.id === socket.decoded.sub);
-                  if (index > -1) {
-                    participants.splice(index, 1);
-                  }
-                  const notification = {
-                    action: 'update',
-                    target: 'chat',
-                    targetId: update.targetId,
-                    object: 'participants',
-                    value: participants
-                  }
-    
-                  participants.forEach(async (x) => {
-                    if (x.id !== socket.decoded.sub) { 
-                      io.to(x.id).emit(UPDATE_EVENT, notification);
-                    }
-                  });
-                }
-                
-              }
-          }
-        });
-    
-    
         // ==============================================
         // ================= last seens =================
         // ==============================================
@@ -153,51 +99,32 @@ function initialize(io) {
         });
     
     
-        // =================================================================
-        // ================= processing messages from user =================
-        // =================================================================
-        socket.on(NEW_CHAT_MESSAGE_EVENT, async (msg) => {
-    
-            if (msg.type === 'full') {
-              let saved = await chatService.saveMessage(msg);
-              if (saved)
-                io.to(msg.sender).emit(RECEIPT_EVENT, {chatId: msg.chatId, messageId: msg.id, type: 'sent'});
-            }
+        // =========================================================================
+        // ================= processing partial messages from user =================
+        // ==========================================================================
+        socket.on(NEW_CHAT_MESSAGE_EVENT, (msg) => {               
             
-            var participants = [];
-            if (msg.type === 'full') {
-                if (msg.type === 'private' && msg.to && msg.to.length === 2)
-                    participants = msg.to;
-                else
-                participants = await chatService.findChatParticipants(msg.chatId, false);
-            } else {
-                participants = msg.to;
-            }
-              
+            const participants = msg.to;              
     
-            if (participants && participants.length > 0) {
-              
-              participants.forEach(async (to) => {
-                if (to.id == socket.decoded.sub)
-                  return;
-                
+            if (participants && participants.length > 0 && msg.type === 'partial') {
+
+              const recipient = participants.find(x => x.id !== socket.decoded.sub);
+
+              if (recipient) {
+
                 let message = {
                   id: msg.id,
                   type: msg.type,
                   sender: socket.decoded.sub,
-                  to: to.id,
+                  to: recipient.id,
                   chatId: msg.chatId,
                   text: msg.text,
                   time: msg.time,
                   ticks: []
                 }
-                // sending message to room (to user)
+                // Send message to room (to user)
                 io.to(message.to).emit(NEW_CHAT_MESSAGE_EVENT, message); 
-      
-                // mark it unread
-                if (message.type === 'full')
-                  await chatService.setUnreadForChat(message.to, message.chatId);
-              });
+              }
             }
     
           });

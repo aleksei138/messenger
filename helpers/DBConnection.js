@@ -1,20 +1,20 @@
 const MongoClient = require('mongodb').MongoClient;
 const config = require('config.json');
 
-class Connection {
+class DBConnection {
     static async connect() {
-        if (this.db) 
-            return this.db
+        if (this.database) 
+            return this.database
         const connection = await MongoClient.connect(this.url, this.options);
-        this.db = connection.db(config.databaseName);
-        return this.db
+        this.database = connection.db(config.databaseName);
+        return this.database
     }
 }
 
-Connection.db = null
-Connection.url = config.connectionString
-Connection.options = {
+DBConnection.database = null
+DBConnection.url = config.connectionString
+DBConnection.options = {
     useUnifiedTopology: true,
 }
 
-module.exports = { Connection }
+module.exports = { DBConnection }

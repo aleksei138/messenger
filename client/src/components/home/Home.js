@@ -29,6 +29,7 @@ import {sent, read, sending} from './ticks'
 import AddCircleIcon from '@material-ui/icons/AddCircle';
 import HighlightOffIcon from '@material-ui/icons/HighlightOff';
 import { Alert, AlertTitle } from '@material-ui/lab';
+import { UserMap } from "./UserMap";
 
 
 const currentUserId = localStorage.getItem('userId');
@@ -60,10 +61,18 @@ export function ChatListElement(props) {
 
     var from = '';
     if (props.item.type === 'group' && props.item.lastMessage.senderName) {
-        from = props.item.lastMessage.senderName;
+        from = props.item.lastMessage.senderName + ':';
     }
-    else if (props.item.type === 'group' && !props.item.lastMessage.senderName && props.item.lastMessage.from) {
-        from = props.item.participants.find(x => x.id === props.item.lastMessage.from).name.split(' ')[0];
+    else if (props.item.type === 'group' 
+        && !props.item.lastMessage.senderName 
+        && props.item.lastMessage.from 
+        && props.item.lastMessage.from !== '00000000-0000-0000-0000-000000000000'
+        ) {
+
+        let participant = UserMap.get(props.item.lastMessage.from);
+        
+        if (participant)
+            from = participant.firstName + ':';;
     }
 
     function selectChat(){
@@ -101,7 +110,7 @@ export function ChatListElement(props) {
                                 <span className={props.item.selected ? "you-label-selected" : "you-label"}>You:</span>
                             }
                             { props.item.type === 'group' && props.item.lastMessage.from !== currentUserId &&
-                                <span className="chat-list-sender">{from + ':'}</span>                            
+                                <span className="chat-list-sender">{from}</span>                            
                             }
                             <span className="chat-list-message">{props.item.lastMessage.text}</span>
                         </div>
@@ -118,10 +127,11 @@ export function Message(props)  {
     const [open, setOpen] = useState(false); // for message info dialog
 
     var from = '';
+    // in groups chat use UserMap, bacause participants are subjects to change
     if (props.chat.type !== 'private' && props.message.sender !== currentUserId){
-        let participant = props.chat.participants.find(p => p.id === props.message.sender);
+        let participant = UserMap.get(props.message.sender);
         if (participant)
-            from = participant.name;
+            from = participant.fullName;
     }
 
     function formatDate(date) {
@@ -136,7 +146,17 @@ export function Message(props)  {
         } else {
             return `${dt.format('D-MMM-YY')} ${time}`; // if not this year
         }
-    }         
+    } 
+    
+    if (props.message.type === 'notification') {
+        return(
+            <div className="notification-wrapper">
+                <div className="notification-text">
+                    <span>{props.message.text}</span>
+                </div>
+            </div>
+        );
+    }
 
     return (
         <div>
@@ -689,13 +709,14 @@ export default function Home() {
     const isLive = useRef(isLiveStored);
     const [switchState, setSwitchState] = useState(isLiveStored); // for 'live' switch
 
-    const { messages, partial, chats, sendMessage, newPrivateChat, newGroupChat, updateObject } = useChat(currChat.id); // chat manager
+    const { messages, partial, chats, sendMessage, newPrivateChat, newGroupChat, deleteOrLeaveChat } = useChat(currChat.id); // chat manager
 
     const [ interlocutor, setInterlocutor ] = useState(); // for last seen of the current interlocutor
     const { lastSeen, setLastSeen, reportOnline, reportOffline } = useLastSeen(interlocutor); // last seen manager
 
     // on page load
     useEffect(()=>{
+        UserMap.init();
         reportOnline();
         // do display lastSeens
         $(window).on("focus", () => {
@@ -814,11 +835,7 @@ export default function Home() {
     }
 
     function deleteChat() {
-        updateObject({
-            action: 'delete',
-            target: 'chat',
-            targetId: currChat.id
-        });
+        deleteOrLeaveChat(currChat.id);
         setCurrChat({});
         setChatMenuState(null);
     }       

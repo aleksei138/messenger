@@ -70,6 +70,25 @@
     padding-left: 0.5em;
 }
 
+.notification-wrapper {
+    width: 100%;
+    padding-top: 1em;
+    padding-bottom: 1em;
+}
+
+.notification-text {
+    font-size: 15px;
+    background-color: #ffffff;
+    border-radius: 1.5em;
+    width: fit-content;
+    margin-left: auto;
+    margin-right: auto;
+    padding-top: 0.5em;
+    padding-bottom: 0.5em;
+    padding-left: 1em;
+    padding-right: 1em;
+}
+
 /* ========================  chats ========================  */
 
 

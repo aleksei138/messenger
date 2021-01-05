@@ -63,7 +63,7 @@ const useChat = (chatId) => {
 
 
   // update header on new message
-  const updateChatHeaders = (message, increaseUnread, setUnsen) => {
+  const updateChatHeaders = (message, increaseUnread, setUnread) => {
     const index = currentChats.current.findIndex(x => x.id === message.chatId);
     if (index > -1) { // for an existing chat
         if (increaseUnread)
@@ -72,16 +72,19 @@ const useChat = (chatId) => {
         currentChats.current[index].lastMessage.text = message.text;
         currentChats.current[index].lastMessage.from = message.sender;
         currentChats.current[index].lastMessage.time = message.time;
+        currentChats.current[index].lastMessage.senderName = null;
 
-        if (setUnsen) {
+        if (setUnread) {
             currentChats.current[index].hasBeenRead = false;
         }
 
         currentChats.current.sort((a, b) => {
             return new Date(b.lastMessage.time) - new Date(a.lastMessage.time);
         });
+
         // To rerender
         setChats([...currentChats.current]); 
+        
     }
     else { // for new chat
 
@@ -158,22 +161,6 @@ const useChat = (chatId) => {
             }
         }
     }              
-
-    if (receipt.type === 'sent') {
-        if (receipt.chatId === currChatId.current) { // update message if for the current chat
-            let index = currentMessages.current.findIndex(x => x.id === receipt.messageId);
-            if (index > -1) {
-                currentMessages.current[index].sent = true;
-                setMessages([...currentMessages.current]);
-            }
-        }
-        else if (history.current[receipt.chatId]) { // update message if for the other chat
-            let index = history.current[receipt.chatId].findIndex(x => x.id === receipt.messageId);
-            if (index > -1) {
-                history.current[receipt.chatId][index].sent = true;
-            }
-        }
-    }
   };
 
   const processNewMessage = (message) => {
@@ -231,7 +218,17 @@ const useChat = (chatId) => {
             timer.current = window.setTimeout(() => setPartial({}), PARTIAL_MESSAGES_LIFESPAN);
         }  
     } else if (message.type === 'notification') {
-        updateChatHeaders(message, true, false);
+        if (message.chatId === currChatId.current) {
+
+            currentMessages.current.push(message);
+            setMessages([...currentMessages.current]);
+        } else {
+
+            if (history.current[message.chatId]) // add to history
+                history.current[message.chatId].push(message);
+        }
+
+        updateChatHeaders(message, false, false);
     }
   };
 
@@ -331,7 +328,7 @@ const useChat = (chatId) => {
                 // load participants for group chats
                 if (currentChats.current[index].participants.length === 0) {
                     // instead of await
-                    findCurrentChatParticipants().then(participants => {
+                    findChatParticipants(chatId).then(participants => {
                         currentChats.current[index].participants = participants;
                         setChats([...currentChats.current]);
                     });
@@ -363,8 +360,8 @@ const useChat = (chatId) => {
     
   }, [chatId]);
 
-  const findCurrentChatParticipants = async () => {
-    const response = await fetch('api/chats/findChatParticipants?' + new URLSearchParams({chatId}).toString());
+  const findChatParticipants = async (id) => {
+    const response = await fetch('api/chats/findChatParticipants?' + new URLSearchParams({chatId: id}).toString());
     const participants = await response.json();
     if (response.ok) {
         return participants;
@@ -440,16 +437,58 @@ const useChat = (chatId) => {
         setMessages((messages) => [...messages, msg]);
         currentMessages.current.push(message);
         updateLabel();
-        updateChatHeaders(message, false, true);
+        
+
+        fetch('api/chats/sendMessage', {
+            method: 'POST',
+            headers: {
+                'Accept': 'application/json',
+                'Content-Type': 'application/json'
+              },
+            body:  JSON.stringify(msg)
+        }).then(response => {
+            response.json().then(result => {
+                if (response.ok && result.success) {
+                    updateChatHeaders(message, false, true);
+                    let index = currentMessages.current.findIndex(x => x.id === msg.id);
+                    if (index > -1) {
+                        currentMessages.current[index].sent = true;
+                        setMessages([...currentMessages.current]);
+                    }
+                }
+            }).catch(err => {
+                console.error(err)
+            })
+        })
+    } else {
+        socket.current.emit(NEW_CHAT_MESSAGE_EVENT, msg);
     }
     
-    socket.current.emit(NEW_CHAT_MESSAGE_EVENT, msg);
+    //socket.current.emit(NEW_CHAT_MESSAGE_EVENT, msg);
   };
 
-  // delete or alter chat or message
-  const updateObject = (update) => {
-    processUpdate(update);
-    socket.current.emit(UPDATE_EVENT, update);
+  // delete or leave chat
+  const deleteOrLeaveChat = (chatId) => {
+    // no await is needed
+    fetch('api/chats/deleteOrLeaveChat?' + new URLSearchParams({chatId}).toString()).then(response => {
+        response.json().then(result => {
+            const index = currentChats.current.findIndex(x => x.id === chatId);
+            if (index > -1) {
+                currentChats.current.splice(index, 1);
+                setChats(currentChats.current);
+
+                if (history.current[chatId])
+                    delete history.current[chatId];
+
+                if (chatId === currChatId.current)
+                    setMessages([...[]]);
+            }
+        }).catch(err => {
+            console.error(err)
+        })
+
+        
+    })
   }
 
   // start a new private chat
@@ -525,7 +564,7 @@ const useChat = (chatId) => {
     }
   };
 
-  return { messages, partial, chats, sendMessage, newPrivateChat, newGroupChat, updateObject };
+  return { messages, partial, chats, sendMessage, newPrivateChat, newGroupChat, deleteOrLeaveChat };
 
 };
 

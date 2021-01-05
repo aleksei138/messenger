@@ -6,7 +6,8 @@ var cookieParser = require('cookie-parser');
 const jwt = require('helpers/jwt');
 const errorHandler = require('helpers/error-handler');
 const sockets = require('helpers/sockets')
-const { Connection } = require('helpers/DBConnection.js')
+const { DBConnection } = require('helpers/DBConnection.js')
+const { WSConnection } = require('helpers/WSConnection.js')
 
 
 app.use(bodyParser.urlencoded({ extended: false }));
@@ -26,7 +27,7 @@ app.use(errorHandler);
 
 
 // connect to DB
-Connection.connect().then(db => {
+DBConnection.connect().then(db => {
     
     console.log('Connected to DB');
 
@@ -43,6 +44,9 @@ Connection.connect().then(db => {
 
     // init sockets
     sockets.initialize(io);
+
+    // make sockets avilable outside
+    WSConnection.set(io);
     
 }).catch(err => {
     console.error('Failed to connect to DB. Reason:');

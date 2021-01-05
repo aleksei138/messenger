@@ -1,4 +1,8 @@
-const { Connection } = require('../helpers/DBConnection.js')
+const { DBConnection } = require('../helpers/DBConnection.js');
+const { WSConnection } = require('../helpers/WSConnection.js');
+
+const NEW_CHAT_MESSAGE_EVENT = "newChatMessage";
+const UPDATE_EVENT = "update";
 
 module.exports = {
     loadChatHeaders,
@@ -6,14 +10,15 @@ module.exports = {
     saveMessage,
     dropUnreadForChat,
     setUnreadForChat,
-    findChat,
     findChatParticipants,
     deleteChat,
     leaveGroupChat,
     setRead,
     createNewGroupChat,
     getChatInfo,
-    getShortChatInfo
+    getShortChatInfo,
+    sendMessage,
+    deleteOrLeaveChat
 };
 
 const groupBy = (xs, key) => {
@@ -33,7 +38,7 @@ const groupBy = (xs, key) => {
 
 async function loadChatHeaders(userId) {
     try {
-        const database = Connection.db;
+        const database = DBConnection.database;
            
         // fetch all chats for user (subquery)
         const queryForUser = { userId: userId };
@@ -234,24 +239,11 @@ async function loadChatHeaders(userId) {
     }
 }
 
-async function findChat(chatId) {
-    try {
-        
-        const database = Connection.db;
-        const collection = database.collection("chats");
-        const query = { id: chatId };
-        const result = await collection.findOne(query);
-        return result;
-    }
-    catch (e) {
-        console.error(e);
-    } 
-}
 
 async function findChatParticipants(chatId, loadNames) {
     try {
         
-        const database = Connection.db;
+        const database = DBConnection.database;
         const userChats = database.collection("userChats");
         if (loadNames) {
             // join
@@ -309,7 +301,7 @@ async function loadMessages(userId, chatId) {
     else
         return [];
     try {        
-        const database = Connection.db;
+        const database = DBConnection.database;
         const messages = database.collection("messages");
 
         const aggregated = await messages.aggregate([
@@ -390,7 +382,7 @@ async function loadMessages(userId, chatId) {
 async function updateChat(chatId, message) {
     try {
         
-        const database = Connection.db;
+        const database = DBConnection.database;
         const collection = database.collection("chats");
         await collection.updateOne(
             {id: chatId},
@@ -410,7 +402,7 @@ async function updateChat(chatId, message) {
 async function dropUnreadForChat(userId, chatId) {
     try {
         
-        const database = Connection.db;
+        const database = DBConnection.database;
         const userChats = database.collection("userChats");
         await userChats.updateOne(
             { chatId: chatId, userId: userId },
@@ -427,7 +419,7 @@ async function dropUnreadForChat(userId, chatId) {
 async function setUnreadForChat(userId, chatId) {
     try {
         
-        const database = Connection.db;
+        const database = DBConnection.database;
         const userChats = database.collection("userChats");
         await userChats.updateOne(
             { chatId: chatId, userId: userId },
@@ -444,7 +436,7 @@ async function setUnreadForChat(userId, chatId) {
 async function createNewPrivateChat(userId, chatId, participants, messageId) {
     try {
         
-        const database = Connection.db;
+        const database = DBConnection.database;
 
         const userChats = database.collection("userChats");        
 
@@ -481,7 +473,7 @@ async function createNewPrivateChat(userId, chatId, participants, messageId) {
 async function saveMessage(message) {
     try {
         
-        const database = Connection.db;
+        const database = DBConnection.database;
         const collection = database.collection("messages");
 
         if (message.isNewChat && message.to.length === 2){
@@ -498,13 +490,11 @@ async function saveMessage(message) {
         // save message
         let result = await collection.insertOne({
             id: message.id,
-            type: "full",
+            type: message.type,
             chatId: message.chatId,
             sender: message.sender,
             text: message.text,
-            time: message.time,
-            read: false,
-            readAt: null
+            time: message.time
         }).insertedCount;
 
         if (result == 0)
@@ -528,7 +518,7 @@ async function saveMessage(message) {
 async function deleteChat(chatId) {
     try {
         
-        const database = Connection.db;
+        const database = DBConnection.database;
         const chats = database.collection("chats");
         const userChats = database.collection('userChats');
         const messages = database.collection('messages');
@@ -546,7 +536,7 @@ async function deleteChat(chatId) {
 async function leaveGroupChat(chatId, userId) {
     try {
         
-        const database = Connection.db;
+        const database = DBConnection.database;
         const userChats = database.collection('userChats');
         await userChats.deleteOne({chatId, userId});        
     }
@@ -558,7 +548,7 @@ async function leaveGroupChat(chatId, userId) {
 async function setRead(messageId, userId, readAt) {
     try {
         
-        const database = Connection.db;
+        const database = DBConnection.database;
         const collection = database.collection("ticks");
         await collection.updateOne(
             {
@@ -585,11 +575,11 @@ async function setRead(messageId, userId, readAt) {
 async function createNewGroupChat(userId, participants, title) {
     try {
         
-        const database = Connection.db;
+        const database = DBConnection.database;
         const chats = database.collection("chats");
         const id = newGuid();
         let inserted = await chats.insertOne({
-            id: id,
+            id,
             type: 'group', 
             title,
             lastMessageId: null,
@@ -606,6 +596,17 @@ async function createNewGroupChat(userId, participants, title) {
 
         await userChats.insertMany(toInsert);
 
+        const notification = {
+            id: newGuid(),
+            type: 'notification',
+            chatId: id,
+            sender: userId,
+            text: `Chat "${title}" has been created`,
+            time: new Date().toISOString()
+        }
+
+        await sendMessage(notification, userId);
+
         const result = {
             id,
             type: 'group',
@@ -615,8 +616,8 @@ async function createNewGroupChat(userId, participants, title) {
             hasBeenRead: true,
             selected: false,
             lastMessage: {
-                from: '',
-                text: 'Chat has been created',
+                from: userId,
+                text: `Chat "${title}" has been created`,
                 time: new Date()
             },
             admin: userId
@@ -643,7 +644,7 @@ async function getChatInfo(userId, chatId) {
     }
     try {
         
-        const database = Connection.db;
+        const database = DBConnection.database;
         const chats = database.collection("chats");
         
         var aggregated = await chats.aggregate([
@@ -717,13 +718,11 @@ async function getChatInfo(userId, chatId) {
     catch (e) {
         console.error(e);
     } 
-
 }
 
 async function getShortChatInfo(chatId) {
     try {
-        
-        const database = Connection.db;
+        const database = DBConnection.database;
         const chats = database.collection("chats");        
         var result = await chats.findOne({id: chatId});
         return result;
@@ -731,7 +730,130 @@ async function getShortChatInfo(chatId) {
     catch (e) {
         console.error(e);
     } 
-
 }
+
+// only for full messages or notifications
+async function sendMessage(msg, sender){
+    try {
+        const io = WSConnection.io;
+        
+        await saveMessage(msg);
+
+          
+        var participants = [];
+        if (msg.chatType === 'private' && msg.to && msg.to.length === 2) 
+            participants = msg.to;
+        else
+            participants = await findChatParticipants(msg.chatId, false); // grop chats participants are subject to chenge
+            
+  
+        if (participants && participants.length > 0) {
+
+            for (var i = 0; i < participants.length; ++i) {
+
+                const to = participants[i];
+
+                if (to.id == sender)
+                    continue;
+
+                const message = {
+                    id: msg.id,
+                    type: msg.type,
+                    sender,
+                    to: to.id,
+                    chatId: msg.chatId,
+                    text: msg.text,
+                    time: msg.time,
+                    ticks: []
+                }
+
+                // Send message to room (to user)
+                io.to(message.to).emit(NEW_CHAT_MESSAGE_EVENT, message); 
+
+                // mark as unread for recipient unless notification
+                if (sender !== '00000000-0000-0000-0000-000000000000')
+                    await setUnreadForChat(message.to, message.chatId);
+            }
+        }
+        return { success: true };
+    }
+    catch (e) {
+        console.error(e);
+        return { success: false };
+    } 
+}
+
+async function deleteOrLeaveChat(chatId, userId) {
+    try {
+        const chat = await getShortChatInfo(chatId); // find out about chat
+        var participants = await findChatParticipants(chatId, true);
+        const io = WSConnection.io;
+
+        // if admin of group chat invoked it, or it's for a private chat, delete for everyone
+        if (chat.type === 'group' && chat.createdBy === userId || chat.type === 'private') {
+
+            const update = {
+                action: 'delete',
+                target: 'chat',
+                targetId: chatId
+            }
+
+            // delete from DB
+            await deleteChat(chatId);
+
+            // notify participants
+            participants.forEach(x => {
+                if (x.id !== userId) { 
+                    io.to(x.id).emit(UPDATE_EVENT, update);                  
+                }
+            });
+
+        } else { // leave group chat and notify others
+
+            await leaveGroupChat(chatId, userId);
+
+            let index = participants.findIndex(x => x.id === userId);
+            let name = '';
+            if (index > -1) {
+                name = participants[index].name;
+                participants.splice(index, 1);
+            }
+
+            const update = {
+                action: 'update',
+                target: 'chat',
+                targetId: chatId,
+                object: 'participants',
+                value: participants
+            }
+
+            participants.forEach(x => {
+                if (x.id !== userId) { 
+                    io.to(x.id).emit(UPDATE_EVENT, update);
+                }
+            });
+
+            const notification = {
+                id: newGuid(),
+                type: 'notification',
+                sender: '00000000-0000-0000-0000-000000000000',
+                text: `${name} left`,
+                chatId,
+                time: new Date().toISOString()
+            }
+
+            await sendMessage(notification, notification.sender);
+        }
+
+        return { success: true };
+        
+    } catch (e) {
+        console.error(e);
+        return { success: false };
+    } 
+    
+}
+
+
 
 

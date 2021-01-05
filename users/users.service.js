@@ -1,7 +1,7 @@
 const config = require('config.json');
 const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
-const { Connection } = require('../helpers/DBConnection.js')
+const { DBConnection } = require('../helpers/DBConnection.js')
 
 module.exports = {
     authenticate,
@@ -21,7 +21,7 @@ function newGuid() {
 
 async function findUser(username) {
     try {        
-        const database = Connection.db;
+        const database = DBConnection.database;
         const collection = database.collection("users");
         const query = { username: username };
         const result = await collection.findOne(query);
@@ -37,7 +37,7 @@ async function findUser(username) {
 
 async function setLastSeen(userId, online) {
     try {        
-        const database = Connection.db;
+        const database = DBConnection.database;
         const users = database.collection("users");
         await users.updateOne(
             {
@@ -55,7 +55,7 @@ async function setLastSeen(userId, online) {
 
 async function getLastSeen(userId) {
     try {        
-        const database = Connection.db;
+        const database = DBConnection.database;
         const collection = database.collection("users");
         const query = { id: userId };
         const option = { projection: { lastSeen: 1, online: 1}};
@@ -73,7 +73,7 @@ function capitalizeFirstLetter(string) {
 
 async function createUser(user) {
     try {        
-        const database = Connection.db;
+        const database = DBConnection.database;
         const collection = database.collection("users");
         const id = newGuid();
         const salt = crypto.randomBytes(48).toString('hex');
@@ -100,7 +100,7 @@ async function createUser(user) {
 
 async function loadContacts(userId) {
     try {        
-        const database = Connection.db;
+        const database = DBConnection.database;
         const collection = database.collection("users");
         const query = { id: {$ne: userId} };
         const options = {
