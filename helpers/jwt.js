@@ -22,7 +22,8 @@ function jwt() {
             // public routes that don't require authentication
             '/api/authenticate',
             '/api/createuser',
-            '/api/verify'
+            '/api/verify',
+            {url: /^\/api\/tasks\/.*/, methods: ['GET', 'POST']}
         ]
     });
 }

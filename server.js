@@ -20,6 +20,7 @@ app.use(jwt());
 // api routes
 app.use('/', require('./users/users.controller'));
 app.use('/', require('./chats/chats.controller'));
+app.use('/', require('./tasks/tasks.controller'));
 
 // global error handler
 app.use(errorHandler);

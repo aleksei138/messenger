@@ -7,6 +7,7 @@ import SignUp from './components/SignUp'
 import reportWebVitals from './reportWebVitals';
 import { Route, BrowserRouter as Router } from 'react-router-dom'
 import { Redirect } from 'react-router-dom'
+import Tasks from './components/tasks/Tasks'
 
 function IsAuthentificated() {
   return localStorage.getItem("authentication");
@@ -32,7 +33,8 @@ const routing = (
   <Router>
      <PrivateRoute exact path="/" component={Home}/>
      <LoggedInRoute path="/login" component={Login} />
-     <Route path="/signup" component={SignUp} />
+     <Route path="/signup" component={SignUp} /> 
+     <Route path="/tasks" component={Tasks} />
   </Router>
 )
 

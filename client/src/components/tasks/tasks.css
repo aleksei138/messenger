@@ -1,0 +1,46 @@
+#image {
+    margin-left: auto;
+    margin-right: 1em;
+    height: 40px;
+    width: 40px;    
+}
+
+.file-list-element {
+    font-size: 14px;
+    max-width: 350px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    margin-top: 1em;
+    margin-bottom: 1em;
+    cursor: pointer;
+}
+    .file-list-element:hover {
+        color: blue;
+    }
+
+.empty-cell {
+    border: 1px solid #c7cacc;
+    height: 1.2em;
+}
+
+.filled-cell {
+    border: 2px solid #7d7d7d !important;
+    padding: 0.1em;
+    margin: 0.1em;
+    
+}
+
+.head-cell {
+    background-color: #dbe5fb;
+    border: 2px solid #7d7d7d !important;
+    height: 1.2em;
+}
+
+.task-button {
+    margin-top: 1em !important;
+    margin-bottom: 1em !important;
+    background-color: #ffffff !important;
+    width: 100%;
+    height: 4em;
+}

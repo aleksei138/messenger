@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import socketIOClient from "socket.io-client";
 import $ from 'jquery'
+import { UserMap } from "./UserMap";
 
 const NEW_CHAT_MESSAGE_EVENT = "newChatMessage";
 const RECEIPT_EVENT = "receipt";
@@ -259,17 +260,24 @@ const useChat = (chatId) => {
         processNewMessage(message);        
     }); 
 
-    // Load chat headers
-    fetch('api/chats/loadchatlist').then((response) => {
-        if (!response.ok)
-            throw new Error();
-        return response.json();
-    }).then((data) => {
-        setChats(data);
-        currentChats.current = data;
-    }).catch((error) => {
-        console.error(error);
+    // load users
+    UserMap.init().then(() => {
+
+        // Load chat headers
+        fetch('api/chats/loadchatlist').then((response) => {
+            if (!response.ok)
+                throw new Error();
+            return response.json();
+        }).then((data) => {
+            setChats(data);
+            currentChats.current = data;
+        }).catch((error) => {
+            console.error(error);
+        });
+        
     });
+
+    
 
     // set user online/offline
     $(window).on("focus", () => {

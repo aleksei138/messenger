@@ -37,7 +37,7 @@ const currentUserId = localStorage.getItem('userId');
 
 
 
-export function ChatListElement(props) {
+function ChatListElement(props) {
 
     var title = props.item.title;
 
@@ -122,7 +122,7 @@ export function ChatListElement(props) {
 }
 
 
-export function Message(props)  {
+function Message(props)  {
 
     const [open, setOpen] = useState(false); // for message info dialog
 
@@ -214,23 +214,13 @@ export function Message(props)  {
         );    
 }
 
-export function MessageInfo(props) {
+function MessageInfo(props) {
     const {onClose} = props;
 
-    // array to render (like SQL join)
     var readList = [];
     if (props.message.ticks && props.message.ticks.length > 0) {
-        readList = props.message.ticks.map(x => Object.assign(x, props.chat.participants.find(y => y.id === x.readBy)));
-    }
-
-    readList = readList.filter(x => x.name);
-        
-
-    readList.forEach(element => {
-        let splited = element.name.split(' ');
-        let avatarLetters = splited.length > 1 ? splited[0][0] + splited[1][0] : props.chat.title[0];
-        element.avatarLetters = avatarLetters;
-    });
+        readList = props.message.ticks.map(x => Object.assign(x, UserMap.get(x.readBy)));
+    } 
 
     const remaining = props.chat.participants.length - props.message.ticks.length - 1;
 
@@ -276,7 +266,7 @@ export function MessageInfo(props) {
                                     <div style={{display: 'flex', paddingTop: '0.5em', paddingBottom: '0.5em'}}>
                                         <Avatar style={{marginTop: 'auto', marginBottom: 'auto'}}>{read.avatarLetters}</Avatar>
                                         <div style={{ marginLeft: '0.5em' }}>
-                                            <div style={{paddingLeft: '0.5em', fontSize: '18px'}}>{read.name}</div>
+                                            <div style={{paddingLeft: '0.5em', fontSize: '18px'}}>{read.fullName}</div>
                                             <div style={{paddingLeft: '0.5em', fontSize: '13px'}}>{formatDate(read.readAt)}</div>
                                         </div>
                                     </div>
@@ -297,7 +287,7 @@ export function MessageInfo(props) {
 
 }
 
-export function Contact(props) {
+function Contact(props) {
 
     const avatarLetters = props.firstName[0] + props.lastName[0];
     const lastSeen = { lastSeen: props.lastSeen, online: props.online };
@@ -338,7 +328,7 @@ export function Contact(props) {
     );
 }
 
-export function NewChatDialog(props) {
+function NewChatDialog(props) {
     const {onClose} = props;
     
     const [contacts, setContacts] = useState([]);
@@ -389,7 +379,7 @@ export function NewChatDialog(props) {
       );
 }
 
-export function NewGroupChatDialog(props) {
+function NewGroupChatDialog(props) {
     const {onClose} = props;
     
     const [contacts, setContacts] = useState([]);
@@ -476,7 +466,7 @@ export function NewGroupChatDialog(props) {
       );
 }
 
-export function GroupNameDialog(props) {
+function GroupNameDialog(props) {
     const title = useRef();
     const [alert, setAlert] = useState(false);
     
@@ -533,7 +523,7 @@ export function GroupNameDialog(props) {
     );
   }
 
-export function LastSeen(props) {
+function LastSeen(props) {
 
     function formatDate(date) {
         const dt = moment(date);
@@ -567,7 +557,7 @@ export function LastSeen(props) {
     } 
 }
 
-export function ChatInfo(props){
+function ChatInfo(props){
 
     const [open, setOpen] = useState(false); 
 
@@ -612,7 +602,7 @@ export function ChatInfo(props){
     );
 }
 
-export function ChatInfoDialog(props) {
+function ChatInfoDialog(props) {
     const {onClose} = props;
 
     var participants = props.participants;
@@ -656,7 +646,7 @@ export function ChatInfoDialog(props) {
 
 }
 
-export function AlertDialog(props) {
+function AlertDialog(props) {
     return (
       <div>
         <Dialog
@@ -716,7 +706,6 @@ export default function Home() {
 
     // on page load
     useEffect(()=>{
-        UserMap.init();
         reportOnline();
         // do display lastSeens
         $(window).on("focus", () => {
