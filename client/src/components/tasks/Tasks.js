@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import Container from '@material-ui/core/Container';
 import Button from '@material-ui/core/Button';
 import Typography from '@material-ui/core/Typography';
@@ -13,9 +13,6 @@ import PhotoLibraryIcon from '@material-ui/icons/PhotoLibrary'
 import VisibilityIcon from '@material-ui/icons/Visibility'
 import EditIcon from '@material-ui/icons/Edit'
 
-document.title = 'Tasks'
-
-
 export default function Tasks() {
     const [reverseOpen, setReverseOpen] = useState(false);
     const [searchOpen, setSearchOpen] = useState(false);
@@ -23,7 +20,10 @@ export default function Tasks() {
     const [excelPreview, setExcelPreview] = useState(false);
     const [excelEdit, setExcelEdit] = useState(false);
 
-
+    useEffect(() => {
+        document.title = 'Tasks';
+    }, []);
+    
 
     return (
         <Container component="main" maxWidth="md" style={{boxShadow: 'rgb(136, 136, 136) 0px 0px 20px 5px', height: '100vh', padding: '0px'}}>

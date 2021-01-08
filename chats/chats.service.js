@@ -151,21 +151,15 @@ async function loadChatHeaders(userId) {
                 }
             },
             {
-                $unwind: {path: "$messages", preserveNullAndEmptyArrays: true}
+                $unwind: "$messages"
             },
             {
                 $match: {
-                    $or: [
-                        {$and: [
-                            {"messages.0": { "$exists": false }}, 
+
+                        $and: [
                             {"userChats.userId" : userId},
                             {type: "group"}
-                        ]},
-                        {$and: [
-                            {"userChats.userId" : userId},
-                            {type: "group"}
-                        ]}
-                    ]
+                        ]                    
                 }
             },
             {

@@ -1,0 +1,7 @@
+/node_modules
+/client/node_modules
+package-lock.json
+config.json
+config.json
+client/.eslintcache
+config.json
