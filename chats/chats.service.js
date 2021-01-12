@@ -10,7 +10,6 @@ module.exports = {
     saveMessage,
     dropUnreadForChat,
     setUnreadForChat,
-    findChatParticipants,
     deleteChat,
     leaveGroupChat,
     setRead,
@@ -21,35 +20,29 @@ module.exports = {
     deleteOrLeaveChat
 };
 
-const groupBy = (xs, key) => {
-    return xs.reduce(function(rv, x) {
-      (rv[x[key]] = rv[x[key]] || []).push(x);
-      return rv;
-    }, {});
-  };
 
-  function newGuid() {
-    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
-      var r = Math.random() * 16 | 0, v = c == 'x' ? r : (r & 0x3 | 0x8);
-      return v.toString(16).toUpperCase();
+function newGuid() {
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
+        var r = Math.random() * 16 | 0, v = c == 'x' ? r : (r & 0x3 | 0x8);
+        return v.toString(16).toUpperCase();
     });
-  }
+}
 
 
 async function loadChatHeaders(userId) {
     try {
         const database = DBConnection.database;
-           
+
         // fetch all chats for user (subquery)
         const queryForUser = { userId: userId };
         const userChats = database.collection("userChats");
-        const cursorForUser = userChats.find(queryForUser, { projection: { chatId: 1 } });
+        const unreadsForUser = await userChats.find(queryForUser, { projection: { chatId: 1, unread: 1 } }).toArray();
         var chatsForUser = [];
-        await cursorForUser.forEach(chat => chatsForUser.push(chat.chatId));
+        unreadsForUser.forEach(x => {
+            chatsForUser.push(x.chatId);
+        });
 
         // private chats
-
-        // join
         const aggregatedPrivateChats = await userChats.aggregate([
             {
                 $lookup: {
@@ -61,6 +54,11 @@ async function loadChatHeaders(userId) {
             },
             {
                 $unwind: "$chats"
+            },
+            {
+                $match: {
+                    $and: [{ userId: {$ne: userId} }]
+                } 
             },
             {
                 $lookup: {
@@ -86,7 +84,7 @@ async function loadChatHeaders(userId) {
             },
             {
                 $match: {
-                    $and: [{"chats.id" : {$in: chatsForUser}}, {"chats.type": "private"}]
+                    $and: [{ "chats.id": { $in: chatsForUser } }, { "chats.type": "private" }]
                 }
             },
             {
@@ -97,50 +95,50 @@ async function loadChatHeaders(userId) {
                     unread: 1,
                     firstName: "$users.firstName",
                     lastName: "$users.lastName",
+                    color: "$users.color",
+                    avatar: "$users.avatar",
                     text: "$messages.text",
                     time: "$messages.time",
                     userId: "$users.id",
                     from: "$messages.sender"
                 }
-            }            
+            }
         ]).toArray();
 
-        var grouped = Object.entries(groupBy(aggregatedPrivateChats, 'id'));
         var resultForPrivateChats = [];
-        for (const [chatId, value] of grouped) {
-            let chat = {};
-            chat.id = chatId;
-            chat.type = value[0].type;
-            let user = value.find(x => x.userId !== userId);
-            chat.title = user.firstName + ' ' + user.lastName;
-            chat.lastMessage = {
-                from: value[0].from,
-                text: value[0].text,
-                time: value[0].time,
+        aggregatedPrivateChats.forEach(chat => {
+            let header = {};
+            header.id = chat.id;
+            header.type = chat.type;
+            header.title = chat.firstName + ' ' + chat.lastName;
+            header.lastMessage = {
+                from: chat.from,
+                text: chat.text,
+                time: chat.time,
             };
-            if (chat.type === 'private')
-                chat.hasBeenRead = value.find(x => x.userId !== userId).unread === 0;
-            else
-                chat.hasBeenRead = true;
+            header.hasBeenRead = chat.unread === 0;
+            header.unread = unreadsForUser.find(x => x.chatId === chat.id).unread;
 
-            chat.unread = value.find(x => x.userId === userId).unread;
-            chat.participants = value.map(x => ({ id: x.userId, name: x.firstName + ' ' + x.lastName}));
-            resultForPrivateChats.push(chat);
-        }
+            // for participants array
+            let interlocutor = {};
+            interlocutor.id = chat.userId;
+            interlocutor.color = chat.color;
+            interlocutor.avatar = chat.avatar;
+            interlocutor.avatarLetters = chat.firstName[0] + chat.lastName[0];
+            interlocutor.fullName = chat.fullName;
+
+            header.participants = [interlocutor];
+
+            resultForPrivateChats.push(header);
+        });
 
         // group chats
         const chats = database.collection("chats");
         const aggregatedGroupChats = await chats.aggregate([
             {
-                $lookup: {
-                    from: "userChats",
-                    localField: "id",
-                    foreignField: "chatId",
-                    as: "userChats"
+                $match: {
+                    $and: [{ id: { $in: chatsForUser } }, { type: "group" }]
                 }
-            },
-            {
-                $unwind: "$userChats"
             },
             {
                 $lookup: {
@@ -154,34 +152,26 @@ async function loadChatHeaders(userId) {
                 $unwind: "$messages"
             },
             {
-                $match: {
-
-                        $and: [
-                            {"userChats.userId" : userId},
-                            {type: "group"}
-                        ]                    
+                $lookup: {
+                    from: "userChats",
+                    localField: "id",
+                    foreignField: "chatId",
+                    as: "userChats"
                 }
+            },
+            {
+                $unwind: "$userChats"
             },
             {
                 $lookup: {
                     from: "users",
-                    localField: "messages.sender",
+                    localField: "userChats.userId",
                     foreignField: "id",
                     as: "users"
                 }
             },
             {
-                $unwind: {path: "$users", preserveNullAndEmptyArrays: true}
-            },
-            {
-                $match: {
-                    $or: [
-                        {"users.0": { "$exists": false }},
-                        {"messages.0": { "$exists": false }},
-                        {"users.0": { "$exists": true }},
-                        {"messages.0": { "$exists": true }},
-                    ]
-                }
+                $unwind: "$users"
             },
             {
                 $project: {
@@ -190,13 +180,40 @@ async function loadChatHeaders(userId) {
                     type: 1,
                     createdDate: 1,
                     createdBy: 1,
-                    unread: "$userChats.unread",                    
                     text: "$messages.text",
                     time: "$messages.time",
-                    name: "$users.firstName",
-                    from: "$messages.sender"
+                    from: "$messages.sender",
+                    userId: "$userChats.userId",
+                    firstName: "$users.firstName",
+                    lastName: "$users.lastName",
+                    color: "$users.color",
+                    avatar: "$users.avatar",
                 }
-            } 
+            },
+            {
+                $group: {
+                    _id: {
+                        id: "$id",
+                        title: "$title",
+                        type: "$type",
+                        createdDate: "$createdDate",
+                        createdBy: "$createdBy",
+                        text: "$text",
+                        time: "$time",
+                        from: "$from"
+
+                    },
+                    "participants": {
+                        $push: {
+                            id: "$userId",
+                            firstName: "$firstName",
+                            lastName: "$lastName",
+                            color: "$color",
+                            avatar: "$avatar"
+                        }
+                    }
+                }
+            }
 
         ]).toArray();
 
@@ -204,21 +221,26 @@ async function loadChatHeaders(userId) {
 
         aggregatedGroupChats.forEach(chat => {
             let header = {};
-            header.id = chat.id;
-            header.type = chat.type;
-            header.title = chat.title;
+            header.id = chat._id.id;
+            header.type = chat._id.type;
+            header.title = chat._id.title;
             header.hasBeenRead = true;
-            header.unread = chat.unread;
+            header.unread = unreadsForUser.find(x => x.chatId === chat._id.id).unread;
             header.lastMessage = {
-                from: chat.from,
-                text: chat.text,
-                time: chat.time ? chat.time : chat.createdDate,
-                senderName: chat.name
+                from: chat._id.from,
+                text: chat._id.text,
+                time: chat._id.time
             };
-            header.admin = chat.createdBy;          
-            header.participants = [];
+            header.admin = chat._id.createdBy;
+            header.participants = chat.participants.map(x => ({
+                id: x.id,
+                fullName: x.firstName + ' ' + x.lastName,
+                avatarLetters: x.firstName[0] + x.lastName[0],
+                color: x.color,
+                avatar: x.avatar
+            }));
             resultForGroupChats.push(header);
-        }); 
+        });
 
         var result = resultForPrivateChats.concat(resultForGroupChats);
 
@@ -230,13 +252,14 @@ async function loadChatHeaders(userId) {
     }
     catch (e) {
         console.error(e);
+        
     }
 }
 
 
 async function findChatParticipants(chatId, loadNames) {
     try {
-        
+
         const database = DBConnection.database;
         const userChats = database.collection("userChats");
         if (loadNames) {
@@ -255,7 +278,7 @@ async function findChatParticipants(chatId, loadNames) {
                 },
                 {
                     $match: {
-                        $and: [{"chatId":  chatId}]
+                        $and: [{ "chatId": chatId }]
                     }
                 },
                 {
@@ -263,26 +286,32 @@ async function findChatParticipants(chatId, loadNames) {
                         id: "$users.id",
                         firstName: "$users.firstName",
                         lastName: "$users.lastName",
+                        color: "$users.color",
+                        avatar: "$users.avatar"
                     }
                 }
-                
-                ]).toArray();
 
-            const result = aggregated.map(x => ({id: x.id, name: x.firstName + ' ' + x.lastName}));
+            ]).toArray();
+
+            const result = aggregated.map(x => ({
+                id: x.id,
+                fullName: x.firstName + ' ' + x.lastName,
+                avatarLetters: x.firstName[0] + x.lastName[0],
+                color: x.color,
+                avatar: x.avatar
+            }));
 
             return result;
         } else {
             const cursor = userChats.find({ chatId }, { userId: 1 });
             var result = [];
-            await cursor.forEach(x => result.push({id: x.userId}));
+            await cursor.forEach(x => result.push({ id: x.userId }));
             return result;
         }
-
-        
     }
     catch (e) {
         console.error(e);
-    } 
+    }
 }
 
 async function loadMessages(userId, chatId) {
@@ -294,7 +323,7 @@ async function loadMessages(userId, chatId) {
     }
     else
         return [];
-    try {        
+    try {
         const database = DBConnection.database;
         const messages = database.collection("messages");
 
@@ -308,37 +337,41 @@ async function loadMessages(userId, chatId) {
                 }
             },
             {
-                $unwind: {path: "$ticks", preserveNullAndEmptyArrays: true}
+                $unwind: { path: "$ticks", preserveNullAndEmptyArrays: true }
             },
             {
-                $match:  {
+                $match: {
                     $or: [
-                        {$and: [
-                            {"ticks.0": { "$exists": false }}, 
-                            {"chatId": chatId}
-                        ]},
-                        {$and: [
-                            {"chatId": chatId}
-                        ]}
+                        {
+                            $and: [
+                                { "ticks.0": { "$exists": false } },
+                                { "chatId": chatId }
+                            ]
+                        },
+                        {
+                            $and: [
+                                { "chatId": chatId }
+                            ]
+                        }
                     ]
                 }
-            },           
+            },
             {
                 $project: {
                     id: 1,
                     type: 1,
                     chatId: 1,
-                    sender: 1,                    
+                    sender: 1,
                     text: 1,
                     time: 1,
                     readBy: "$ticks.readBy",
                     readAt: "$ticks.readAt"
-                   
+
                 }
-            }, 
+            },
             {
                 $group: {
-                    _id: { 
+                    _id: {
                         id: "$id",
                         type: "$type",
                         chatId: "$chatId",
@@ -346,7 +379,7 @@ async function loadMessages(userId, chatId) {
                         text: "$text",
                         time: "$time"
                     },
-                    "ticks" : {
+                    "ticks": {
                         $push: {
                             readBy: "$readBy",
                             readAt: "$readAt"
@@ -354,15 +387,15 @@ async function loadMessages(userId, chatId) {
                     }
                 }
             }
-        ]).sort({"_id.time": 1}).toArray();
+        ]).sort({ "_id.time": 1 }).toArray();
 
         const result = aggregated.map(m => ({
-            id:  m._id.id,
-            type:  m._id.type,
-            chatId:  m._id.chatId,
-            sender:  m._id.sender,
-            text:  m._id.text,
-            time:  m._id.time,
+            id: m._id.id,
+            type: m._id.type,
+            chatId: m._id.chatId,
+            sender: m._id.sender,
+            text: m._id.text,
+            time: m._id.time,
             ticks: m.ticks[0].readAt && m._id.sender === userId ? m.ticks : []
         }));
 
@@ -370,16 +403,17 @@ async function loadMessages(userId, chatId) {
     }
     catch (e) {
         console.error(e);
-    } 
+        
+    }
 }
 
 async function updateChat(chatId, message) {
     try {
-        
+
         const database = DBConnection.database;
         const collection = database.collection("chats");
         await collection.updateOne(
-            {id: chatId},
+            { id: chatId },
             {
                 $set: {
                     lastMessageId: message.id
@@ -389,13 +423,13 @@ async function updateChat(chatId, message) {
     }
     catch (e) {
         console.error(e);
-    } 
+    }
 }
 
 
 async function dropUnreadForChat(userId, chatId) {
     try {
-        
+
         const database = DBConnection.database;
         const userChats = database.collection("userChats");
         await userChats.updateOne(
@@ -403,16 +437,16 @@ async function dropUnreadForChat(userId, chatId) {
             {
                 $set: { unread: 0 }
             }
-        );        
+        );
     }
     catch (e) {
         console.error(e);
-    } 
+    }
 }
 
 async function setUnreadForChat(userId, chatId) {
     try {
-        
+
         const database = DBConnection.database;
         const userChats = database.collection("userChats");
         await userChats.updateOne(
@@ -420,69 +454,80 @@ async function setUnreadForChat(userId, chatId) {
             {
                 $inc: { unread: 1 }
             }
-        );        
+        );
     }
     catch (e) {
         console.error(e);
-    } 
+    }
 }
 
-async function createNewPrivateChat(userId, chatId, participants, messageId) {
+async function createNewPrivateChat(userId, chatId, interlocutor, messageId) {
     try {
-        
+
         const database = DBConnection.database;
+        const userChats = database.collection("userChats");
 
-        const userChats = database.collection("userChats");        
-
-        const toInsert = participants.map(p => ({userId: p.id, chatId, unread: 0}));
+        const toInsert = [
+            {
+                userId: interlocutor,
+                chatId,
+                unread: 0
+            },
+            {
+                userId,
+                chatId,
+                unread: 0
+            }
+        ];
 
         let inserted = await userChats.insertMany(toInsert);
 
-        if (inserted.insertedCount === 0)
-                throw Error('Cannot insert into "userChats"')
+        if (inserted.insertedCount === 0) throw Error('Cannot insert into "userChats"')
 
         const chats = database.collection("chats");
+
         inserted = await chats.insertOne({
             id: chatId,
-            type: 'private', 
+            type: 'private',
             title: '',
             lastMessageId: messageId,
             createdBy: userId,
             createdDate: new Date()
         });
 
-        if (inserted.insertedCount === 0)
-            throw Error('Cannot insert into "chats"')
+        if (inserted.insertedCount === 0) throw Error('Cannot insert into "chats"')
 
-        return {id: chatId};
-        
+        return { id: chatId };
+
     }
     catch (e) {
         console.error(e);
-        return null;
-    } 
+        
+    }
 }
 
 
 async function saveMessage(message) {
     try {
-        
+
+        //throw Error('Have a nice day')
+
         const database = DBConnection.database;
         const collection = database.collection("messages");
 
-        if (message.isNewChat && message.to.length === 2){
+        // create new chat if needed
+        if (message.isNewPrivateChat) {
             let res = await createNewPrivateChat(
-                message.sender, 
+                message.sender,
                 message.chatId,
-                message.to,
+                message.to[0].id,
                 message.id
-                );
-            if (!res)
-                throw Error('Cannot create new chat');
+            );
+            if (!res) throw Error('Cannot create new chat');
         }
-        
+
         // save message
-        let result = await collection.insertOne({
+        let inserted = await collection.insertOne({
             id: message.id,
             type: message.type,
             chatId: message.chatId,
@@ -491,57 +536,54 @@ async function saveMessage(message) {
             time: message.time
         }).insertedCount;
 
-        if (result == 0)
-            throw Error('Cannot insert into "messages"')
-        
-        
-        
+        if (inserted === 0) throw Error('Cannot insert into "messages"');
+
         // update chat header
         await updateChat(message.chatId, message);
 
-        return {id: message.id};
-        
+        return { id: message.id };
+
     }
     catch (e) {
         console.error(e);
-        return null;
-    } 
+        
+    }
 }
 
 
 async function deleteChat(chatId) {
     try {
-        
+
         const database = DBConnection.database;
         const chats = database.collection("chats");
         const userChats = database.collection('userChats');
         const messages = database.collection('messages');
         await Promise.all([
-            chats.deleteOne({id: chatId}),
-            userChats.deleteMany({chatId: chatId}),
-            messages.deleteMany({chatId: chatId})
-        ]);        
+            chats.deleteOne({ id: chatId }),
+            userChats.deleteMany({ chatId: chatId }),
+            messages.deleteMany({ chatId: chatId })
+        ]);
     }
     catch (e) {
         console.error(e);
-    } 
+    }
 }
 
 async function leaveGroupChat(chatId, userId) {
     try {
-        
+
         const database = DBConnection.database;
         const userChats = database.collection('userChats');
-        await userChats.deleteOne({chatId, userId});        
+        await userChats.deleteOne({ chatId, userId });
     }
     catch (e) {
         console.error(e);
-    } 
+    }
 }
 
 async function setRead(messageId, userId, readAt) {
     try {
-        
+
         const database = DBConnection.database;
         const collection = database.collection("ticks");
         await collection.updateOne(
@@ -552,29 +594,29 @@ async function setRead(messageId, userId, readAt) {
             },
             {
                 $set: {
-                    readAt: readAt                    
+                    readAt: readAt
                 }
 
             },
-            { 
-                upsert: true 
+            {
+                upsert: true
             }
-        ); 
+        );
     }
     catch (e) {
         console.error(e);
-    } 
+    }
 }
 
 async function createNewGroupChat(userId, participants, title) {
     try {
-        
+
         const database = DBConnection.database;
         const chats = database.collection("chats");
         const id = newGuid();
         let inserted = await chats.insertOne({
             id,
-            type: 'group', 
+            type: 'group',
             title,
             lastMessageId: null,
             createdBy: userId,
@@ -586,7 +628,7 @@ async function createNewGroupChat(userId, participants, title) {
 
         const userChats = database.collection('userChats');
 
-        const toInsert = participants.map(p => ({userId: p.id, chatId: id, unread: 0}));
+        const toInsert = participants.map(p => ({ userId: p.id, chatId: id, unread: 0 }));
 
         await userChats.insertMany(toInsert);
 
@@ -618,29 +660,29 @@ async function createNewGroupChat(userId, participants, title) {
         }
 
         return result;
-        
+
     }
     catch (e) {
         console.error(e);
-        return null;
-    } 
+        
+    }
 }
 
 async function getChatInfo(userId, chatId) {
-    
-    const participants = await findChatParticipants(chatId, true);
+
+    var participants = await findChatParticipants(chatId, true);
     if (participants) {
         const user = participants.find(p => p.id === userId);
         if (!user)
-            return null;  
+            return null;
     } else {
-        return null; 
+        return null;
     }
     try {
-        
+
         const database = DBConnection.database;
         const chats = database.collection("chats");
-        
+
         var aggregated = await chats.aggregate([
             {
                 $lookup: {
@@ -654,7 +696,7 @@ async function getChatInfo(userId, chatId) {
                 $unwind: "$userChats"
             },
             {
-                $match: {$and: [{"userChats.userId": userId}, {"userChats.chatId": chatId}]}
+                $match: { $and: [{ "userChats.userId": userId }, { "userChats.chatId": chatId }] }
             },
             {
                 $lookup: {
@@ -665,35 +707,25 @@ async function getChatInfo(userId, chatId) {
                 }
             },
             {
-                $unwind: {path: "$messages", preserveNullAndEmptyArrays: true}
-            },
-            {
-                $match: {
-                    $or: [
-                        {"messages.0": { "$exists": false }},
-                        {"messages.0": { "$exists": true }}
-                    ]
-                }
+                $unwind: "$messages"
             },
             {
                 $project: {
                     id: 1,
                     title: 1,
                     type: 1,
-                    unread: "$userChats.unread",                    
+                    createdBy: 1,
+                    unread: "$userChats.unread",
                     text: "$messages.text",
                     time: "$messages.time",
                     from: "$messages.sender"
                 }
-            } 
+            }
         ]).toArray();
 
         var title = aggregated[0].title;
-        if (aggregated[0].type === 'private') {
-            title = participants.find(x => x.id !== userId).name;
-        }
 
-        const result = {
+        var result = {
             id: aggregated[0].id,
             title,
             type: aggregated[0].type,
@@ -707,80 +739,97 @@ async function getChatInfo(userId, chatId) {
             }
         }
 
+        if (!aggregated[0]) throw Error('Chat not found')
+
+        if (aggregated[0].type === 'private') {
+            var user = participants.find(x => x.id !== userId);
+            if (user) {
+                result.title = user.fullName;
+                result.participants = [user];
+            }
+        } else {
+            result.admin = aggregated[0].createdBy;
+        }
+
+
         return result;
     }
     catch (e) {
         console.error(e);
-    } 
+        
+    }
 }
 
 async function getShortChatInfo(chatId) {
     try {
         const database = DBConnection.database;
-        const chats = database.collection("chats");        
-        var result = await chats.findOne({id: chatId});
+        const chats = database.collection("chats");
+        var result = await chats.findOne({ id: chatId });
         return result;
     }
     catch (e) {
         console.error(e);
-    } 
+    }
 }
 
 // only for full messages or notifications
-async function sendMessage(msg, sender){
-    try {
-        const io = WSConnection.io;
-        
-        await saveMessage(msg);
+async function sendMessage(msg, sender) {
+    const io = WSConnection.io;
 
-          
-        var participants = [];
-        if (msg.chatType === 'private' && msg.to && msg.to.length === 2) 
-            participants = msg.to;
-        else
-            participants = await findChatParticipants(msg.chatId, false); // grop chats participants are subject to chenge
-            
-  
-        if (participants && participants.length > 0) {
+    let saved = await saveMessage(msg);
 
-            for (var i = 0; i < participants.length; ++i) {
+    if (!saved) throw Error('Cannot save message')
 
-                const to = participants[i];
+    var participants = [];
+    if (msg.chatType === 'private' && msg.to && msg.to.length === 1)
+        participants = msg.to;
+    else
+        participants = await findChatParticipants(msg.chatId, false); // grop chats participants are subjects to chenge
 
-                if (to.id == sender)
-                    continue;
+    if (participants && participants.length > 0) {
 
-                const message = {
-                    id: msg.id,
-                    type: msg.type,
-                    sender,
-                    to: to.id,
-                    chatId: msg.chatId,
-                    text: msg.text,
-                    time: msg.time,
-                    ticks: []
-                }
+        for (var i = 0; i < participants.length; ++i) {
 
-                // Send message to room (to user)
-                io.to(message.to).emit(NEW_CHAT_MESSAGE_EVENT, message); 
+            const to = participants[i];
 
-                // mark as unread for recipient unless notification
-                if (sender !== '00000000-0000-0000-0000-000000000000')
-                    await setUnreadForChat(message.to, message.chatId);
+            if (to.id == sender)
+                continue;
+
+            const message = {
+                id: msg.id,
+                type: msg.type,
+                sender,
+                to: to.id,
+                chatId: msg.chatId,
+                text: msg.text,
+                time: msg.time,
+                ticks: []
             }
+
+            // Send message to room (to user)
+            io.to(message.to).emit(NEW_CHAT_MESSAGE_EVENT, message);
+
+            // mark as unread for recipient unless notification
+            if (sender !== '00000000-0000-0000-0000-000000000000')
+                await setUnreadForChat(message.to, message.chatId);
         }
-        return { success: true };
+
+    } else {
+        throw Error('Cannot find chat participants')
     }
-    catch (e) {
-        console.error(e);
-        return { success: false };
-    } 
+
+    return { success: true };
 }
 
 async function deleteOrLeaveChat(chatId, userId) {
     try {
         const chat = await getShortChatInfo(chatId); // find out about chat
         var participants = await findChatParticipants(chatId, true);
+
+        if (!participants || !participants[0]) throw Error('Cannot find chat participants')
+        const user = participants.find(x => x.id === userId);
+        if (!user) throw Error('User does not have right to delete this message')
+
         const io = WSConnection.io;
 
         // if admin of group chat invoked it, or it's for a private chat, delete for everyone
@@ -797,8 +846,8 @@ async function deleteOrLeaveChat(chatId, userId) {
 
             // notify participants
             participants.forEach(x => {
-                if (x.id !== userId) { 
-                    io.to(x.id).emit(UPDATE_EVENT, update);                  
+                if (x.id !== userId) {
+                    io.to(x.id).emit(UPDATE_EVENT, update);
                 }
             });
 
@@ -809,7 +858,7 @@ async function deleteOrLeaveChat(chatId, userId) {
             let index = participants.findIndex(x => x.id === userId);
             let name = '';
             if (index > -1) {
-                name = participants[index].name;
+                name = participants[index].fullName;
                 participants.splice(index, 1);
             }
 
@@ -822,7 +871,7 @@ async function deleteOrLeaveChat(chatId, userId) {
             }
 
             participants.forEach(x => {
-                if (x.id !== userId) { 
+                if (x.id !== userId) {
                     io.to(x.id).emit(UPDATE_EVENT, update);
                 }
             });
@@ -840,14 +889,9 @@ async function deleteOrLeaveChat(chatId, userId) {
         }
 
         return { success: true };
-        
+
     } catch (e) {
-        console.error(e);
-        return { success: false };
-    } 
-    
+        console.error(e);        
+    }
+
 }
-
-
-
-

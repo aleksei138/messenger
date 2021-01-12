@@ -19,7 +19,7 @@ function Copyright() {
     <Typography variant="body2" color="textSecondary" align="center">
       {'Copyright © '}
       <Link color="inherit">
-        Messenger
+        Simplex
       </Link>{' '}
       {new Date().getFullYear()}
       {'.'}
@@ -46,6 +46,13 @@ const useStyles = makeStyles((theme) => ({
     margin: theme.spacing(3, 0, 2),
   },
 }));
+
+function setCookie(name, value, expiresIn) {
+  var date = new Date();
+  date.setTime(date.getTime() + expiresIn*1000);
+  const expires = "; expires=" + date.toUTCString();
+  document.cookie = name + "=" + (value || "")  + expires + "; path=/";
+}
 
 export default function SignUp() {
   const classes = useStyles();
@@ -88,12 +95,14 @@ export default function SignUp() {
             if (!response.ok) {            
               throw new Error(data.message);
             }
+            setCookie('authentication', data.authentication.token, data.authentication.expiresIn);
+
+            localStorage.setItem('authentication', data.authentication.token); // to fetch token easier
+            localStorage.setItem('user', JSON.stringify(data.user));
+            
             setSuccess(true);
-            setTimeout(() => {
-                document.cookie = "authentication=" + data.token;
-                localStorage.setItem('authentication', data.token);
-                localStorage.setItem('userId', data.userId);
-                localStorage.setItem('userName', data.userName);
+
+            setTimeout(() => {            
                 window.location.href = '/';
             }, 1000);
             

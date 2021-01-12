@@ -19,6 +19,23 @@ function newGuid() {
     });
   }
 
+const colors = [
+    "#f44336",
+    "#e91e63",
+    "#9c27b0",
+    "#673ab7",
+    "#3f51b5",
+    "#2196f3",
+    "#03a9f4",
+    "#00bcd4",
+    "#009688",
+    "#64dd17",
+    "#fdd835",
+    "#ffb300",
+    "#fb8c00",
+    "#f4511e"
+]
+
 async function findUser(username) {
     try {        
         const database = DBConnection.database;
@@ -32,6 +49,7 @@ async function findUser(username) {
     }
     catch (e) {
         console.error(e);
+        return null;        
     } 
 }
 
@@ -64,6 +82,7 @@ async function getLastSeen(userId) {
     }
     catch (e) {
         console.error(e);
+        return null;
     } 
 }
 
@@ -72,30 +91,39 @@ function capitalizeFirstLetter(string) {
   }
 
 async function createUser(user) {
-    try {        
-        const database = DBConnection.database;
-        const collection = database.collection("users");
-        const id = newGuid();
-        const salt = crypto.randomBytes(48).toString('hex');
-        const hash = crypto.createHash("sha256").update(user.password + salt).digest('hex');
-        const result = await collection.insertOne({
-            id,
-            username: user.username.trim(),
-            hash,
-            salt,
-            firstName: capitalizeFirstLetter(user.firstName),
-            lastName: capitalizeFirstLetter(user.lastName),
-            lastSeen: new Date(),
-            online: false
-        });
-        if (result.insertedCount > 0)
-            return id;
-        else
-            return null;
-    }
-    catch (e) {
-        console.error(e);
-    } 
+    const database = DBConnection.database;
+    const collection = database.collection("users");
+    const salt = crypto.randomBytes(48).toString('hex');
+    const hash = crypto.createHash("sha256").update(user.password + salt).digest('hex');
+    const toInsert = {
+        id: newGuid(),
+        username: user.username.trim(),
+        hash,
+        salt,
+        firstName: capitalizeFirstLetter(user.firstName),
+        lastName: capitalizeFirstLetter(user.lastName),
+        lastSeen: new Date(),
+        online: false,
+        color: colors[Math.floor(Math.random() * colors.length)],
+        avatar: '',
+        createdDate: new Date()
+    };
+
+    const avatarLetters = toInsert.firstName[0] + toInsert.lastName[0];
+
+    const inserted = await collection.insertOne(toInsert);
+
+    if (inserted.insertedCount < 1) throw new Error("User has not been created");    
+    
+    return {
+        id: toInsert.id,
+        username: toInsert.username,
+        fullName: toInsert.firstName + ' ' + toInsert.lastName,
+        avatarLetters,
+        color: toInsert.color,
+        avatar: ''
+    }  
+    
 }
 
 async function loadContacts(userId) {
@@ -108,15 +136,22 @@ async function loadContacts(userId) {
                 id: 1,
                 firstName: 1,
                 lastName: 1,
+                color: 1,
+                avatar: 1,
                 lastSeen: 1,
                 online: 1
             }
         }
         const result = await collection.find(query, options).sort({"firstName": 1, "lastName": 1}).toArray();
+        result.forEach(user => {
+            user.fullName = `${user.firstName} ${user.lastName}`;
+            user.avatarLetters = user.firstName[0] + user.lastName[0];
+        })
         return result;
     }
     catch (e) {
         console.error(e);
+        return null;
     } 
 }
 
@@ -125,23 +160,29 @@ async function authenticate({ username, password }) {
     if (!user) 
         throw 'Username is incorrect'; 
 
-    if (user.hash) {
-        const computed = crypto.createHash("sha256").update(password + user.salt).digest('hex');
-        if (computed !== user.hash) 
-            throw 'Password is incorrect';
-    }
-    else {
-        // deprecated
-        if (user.password !== password) 
-            throw 'Password is incorrect';
-    }
+    if (!user.salt || !user.hash)
+        throw Error('Cannot find user');
+
+    const computed = crypto.createHash("sha256").update(password + user.salt).digest('hex');
+    if (computed !== user.hash) 
+        throw 'Password is incorrect';
+
+    const expiresIn = 60 * 60 * 24 * 365; // 1 year
 
     // create a jwt token for one year
-    const token = jwt.sign({ sub: user.id }, config.secret, { expiresIn: 60 * 60 * 24 * 365 });
+    const token = jwt.sign({ sub: user.id }, config.secret, { expiresIn });
 
     return {
-        token: token,
-        userId: user.id,
-        userName: `${user.firstName} ${user.lastName}` 
-    };
+        authentication: {
+            token: token,
+            expiresIn
+        },
+        user: {
+            id: user.id,
+            fullName: `${user.firstName} ${user.lastName}`,
+            avatarLetters: user.firstName[0] + user.lastName[0],
+            color: user.color,
+            avatar: user.avatar
+        } 
+    }
 }

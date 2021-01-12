@@ -8,10 +8,12 @@ exports.UserMap = class UserMap {
             let map = {};
             data.forEach(element => {
                 map[element.id] = {
-                    fullName: element.firstName + ' ' + element.lastName, 
+                    fullName: element.fullName, 
                     firstName: element.firstName, 
                     lastName: element.lastName,
-                    avatarLetters: element.firstName[0] + element.lastName[0]
+                    avatarLetters: element.avatarLetters,
+                    color: element.color,
+                    avatar: element.avatar
                 };
             });
             this.map = map;

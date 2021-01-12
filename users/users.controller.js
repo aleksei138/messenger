@@ -15,11 +15,15 @@ router.get('/api/chats/loadContacts', loadContacts);
 
 module.exports = router;
 
-function authenticate(req, res, next) {
-    userService.authenticate(req.body)
-        .then(user => res.json(user))
-        .catch(next);
+async function authenticate(req, res, next) {
+    try {
+        const authInfo = await userService.authenticate(req.body);
+        res.json(authInfo);
     }
+    catch (err) {
+        next(err);
+    }
+}
 
 // verify JWT
 function verify(req, res){
@@ -39,62 +43,67 @@ function verify(req, res){
         }
         res.json(result);
     }
-    else{
+    else {
         res.json({ success: false});
     }
 }
 
 async function createUser(req, res, next) {
-    const info = req.body;
-    if (!info ||
-        !info.username.trim() ||
-        !info.password.trim() ||
-        !info.firstName.trim() ||
-        !info.lastName.trim()
-        ) {
-            res.status(400).send({ message: 'Empty fields'});
-            return;
-        }
-    const existing = await userService.findUser(info.username);
-    if (existing) {
-        res.status(400).send({ message: 'User already exists'});
-        return;
-    }
-    // check first and last names contain only letters
-    if (/[^a-zA-Z]/.test(info.firstName) || /[^a-zA-Z]/.test(info.lastName)) {
-        res.status(400).send({ message: 'First and last names shall contain letters only'});
-        return;
-    }
-    if (info.password.trim().length < 3) {
-        res.status(400).send({ message: 'Password is too short'});
-        return;
-    }
+    try {
+        const info = req.body;
+        if (!info ||
+            !info.username.trim() ||
+            !info.password.trim() ||
+            !info.firstName.trim() ||
+            !info.lastName.trim()
+            ) {
+                throw new Error('Empty fields');
+            }
+        const existing = await userService.findUser(info.username);
 
-    if (info.password.trim() !== info.password) {
-        res.status(400).send({ message: 'Password shall not begin or end with space'});
-        return;
-    }        
+        if (existing) throw new Error('User already exists');
 
-    const id = await userService.createUser(info);
-    if (id) {
-        userService.authenticate({username: info.username, password: info.password})
-        .then(user => res.json(user))
-        .catch(next);
+        // check first and last names contain only letters
+        if (/[^a-zA-Z]/.test(info.firstName) || /[^a-zA-Z]/.test(info.lastName)) throw new Error('First and last names shall contain letters only');
+
+        if (info.password.trim().length < 3) throw new Error('Password is too short');
+
+        if (info.password.trim() !== info.password) throw new Error('Password must not begin or end with space');  
+
+        const user = await userService.createUser(info);
+        if (!user) throw Error('Something went wrong');
+
+        const authInfo = await userService.authenticate({username: info.username, password: info.password});
+        res.json(authInfo);
     }
-    else {
-        res.status(400).send({ message: 'Something went wrong'});
+    catch (err) {
+        next(err);
     }
+    
 }
 
 async function getLastSeen(req, res, next) {
-    const lastSeen = await userService.getLastSeen(req.query.userId);
-    res.json(lastSeen);
+    try {
+        const lastSeen = await userService.getLastSeen(req.query.userId);
+        if (!lastSeen) throw Error('Cannot get lastSeen')
+        res.json(lastSeen);
+    }
+    catch (err) {
+        next(err);
+    }    
 }
 
 async function loadContacts(req, res, next) {
-    const contacts = await userService.loadContacts(req.user.sub);
-    res.json(contacts);
-  }
+    try {
+        const contacts = await userService.loadContacts(req.user.sub);
+        if (!contacts) throw Error('Cannot get contacts')
+        res.json(contacts);
+    }
+    catch (err) {
+        next(err);
+    }
+    
+}
 
 
 
